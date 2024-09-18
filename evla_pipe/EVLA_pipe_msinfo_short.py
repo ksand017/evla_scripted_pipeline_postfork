@@ -12,7 +12,7 @@ from casaplotms import plotms
 from . import pipeline_save
 from .utils import (
         uniq, runtiming, logprint, find_EVLA_band, spwsforfield, find_3C84,
-        buildscans,
+        buildscans,getpainfo,
 )
 
 tb = table()
@@ -23,7 +23,8 @@ def task_logprint(msg):
     logprint(msg, logfileout="logs/msinfo.log")
 
 
-task_logprint("*** Starting EVLA_pipe_msinfo.py ***")
+task_logprint("*** Starting EVLA_pipe_msinfo_short.py ***")
+
 time_list = runtiming("msinfo", "start")
 QA2_msinfo = "Pass"
 
@@ -53,6 +54,7 @@ center_frequencies = [
 ]
 bands = [find_EVLA_band(center) for center in center_frequencies]
 spw_band_map = bands
+#print('spw_band_map', spw_band_map)
 unique_bands = uniq(bands)
 unique_bands_string = ",".join(str(ii) for ii in unique_bands)
 task_logprint(f"unique band string = {unique_bands_string}")
@@ -227,15 +229,35 @@ amp_state_IDs = []
 calibrator_state_IDs = []
 pointing_state_IDs = []
 
+phaseField = []
 for state_ID in range(len(intents)):
     state_intents = intents[state_ID].rsplit(",")
     for intent in range(len(state_intents)):
         scan_intent = state_intents[intent].rsplit("#")[0]
         subscan_intent = state_intents[intent].rsplit("#")[1]
         if scan_intent == "CALIBRATE_BANDPASS":
+            tb.open(msname)
+            subtable = tb.query('STATE_ID in[%s]' %state_ID)
+            BP_field_id = np.unique(subtable.getcol('FIELD_ID'))
+            tb.close()
+            tb.open(msname+'/FIELD')
+            temp_field_names = tb.getcol('NAME')
+            BPField = temp_field_names[BP_field_id][0]
+            tb.close()
+            
             bandpass_state_IDs.append(state_ID)
             calibrator_state_IDs.append(state_ID)
         elif scan_intent == "CALIBRATE_DELAY":
+
+            tb.open(msname)
+            subtable = tb.query('STATE_ID in[%s]' %state_ID)
+            Delay_field_id = np.unique(subtable.getcol('FIELD_ID'))
+            tb.close()
+            tb.open(msname+'/FIELD')
+            temp_field_names = tb.getcol('NAME')
+            DelayField = temp_field_names[Delay_field_id][0]
+            tb.close()
+            
             delay_state_IDs.append(state_ID)
             calibrator_state_IDs.append(state_ID)
         elif scan_intent == "CALIBRATE_FLUX":
@@ -287,9 +309,29 @@ for state_ID in range(len(intents)):
             polarization_lkg_state_IDs.append(state_ID)
             calibrator_state_IDs.append(state_ID)            
         elif scan_intent == "CALIBRATE_AMPLI":
+
+            tb.open(msname)
+            subtable = tb.query('STATE_ID in[%s]' %state_ID)
+            Amp_field_id = np.unique(subtable.getcol('FIELD_ID'))
+            tb.close()
+            tb.open(msname+'/FIELD')
+            temp_field_names = tb.getcol('NAME')
+            AmpField = temp_field_names[Amp_field_id]
+            tb.close()
+            
             amp_state_IDs.append(state_ID)
             calibrator_state_IDs.append(state_ID)
         elif scan_intent == "CALIBRATE_PHASE":
+
+            tb.open(msname)
+            subtable = tb.query('STATE_ID in[%s]' %state_ID)
+            phase_field_id = np.unique(subtable.getcol('FIELD_ID'))
+            tb.close()
+            tb.open(msname+'/FIELD')
+            temp_field_names = tb.getcol('NAME')
+            phaseField.append(temp_field_names[phase_field_id][0])
+            tb.close()
+            
             phase_state_IDs.append(state_ID)
             calibrator_state_IDs.append(state_ID)
         elif scan_intent == "CALIBRATE_POINTING":
@@ -347,6 +389,7 @@ else:
         bandpass_field_select_string = str(bandpass_field_list[0])
 
 if len(delay_state_IDs) == 0:
+    DelayField = BPField
     task_logprint("No delay calibration scans defined, using bandpass calibrator")
     delay_scan_select_string = bandpass_scan_select_string
     task_logprint(f"Delay calibrator(s) scans are {delay_scan_select_string}")
@@ -368,8 +411,8 @@ else:
 
 polcals_A = ['J1331+3030', '3c286', '3C286', 'J0521+1638', '3c138', '3C138', 'J0137+3309', '0137+331=3C48', '3c48', '3C48']
 #np.genfromtxt('../../EVLA_Scripted_Pipeline/EVLA_SCRIPTED_PIPELINE/data/catA_polcals.dat', dtype=np.str_)
-polcals_C = ['J0542+4951', '3c147', '3C147', 'J1407+2827', 'OQ208', 'Oq208', 'oq208', 'J0259+0747']
-
+polcals_C = ['J0542+4951', '3c147', '3C147', 'J1407+2827', 'OQ208', 'Oq208', 'oq208'] # 'J0259+0747'
+use_parang = False
 if len(polarization_angle_state_IDs) == 0:
     if do_pol == True:
         warnings.warn("WARNING: No polarization calibration scans defined, but polarization calibration was requested!")
@@ -410,23 +453,91 @@ if len(polarization_angle_state_IDs) == 0:
                     polarization_lkg_state_IDs.append(pol_lkg_state_ids[0])
                     calibrator_state_IDs.append(pol_lkg_state_ids[0])
                     break
-            if has_leak_polcal == False: #if no pol leakage calibrator was found (i.e. pol leakage cal is not a standard one) request name of calibrator manually
+            if has_leak_polcal == False: #if no pol leakage calibrator was found (i.e. pol leakage cal is not a standard one), check parallactic angle coverage, or request name of calibrator manually
                 warnings.warn('WARNING: None of the standard pol leakage calibrators are availble in the MS')
                 task_logprint('WARNING: None of the standard pol leakage calibrators are availble in the MS')
-                manual_leak_polcalfield ='N'
-                #str(input("Would you like to manually enter the field name of the pol leakage calibrator? (Y or N)")).upper()
-                if manual_leak_polcalfield == 'Y':
-                    polLeakField = str(input("Enter field name of pol leakage calibrator: "))
+                task_logprint("Determining whether any phase calibrators have sufficient parallactic angle coverage to serve as polarization leakage calibrator (3 scans over 45 degrees)")
+                for c in range(len(field_names)):
+                    try: #need to include check to skip science targets
+                        parang = getpainfo(msname=msname, field=field_names[c])
+                        scan_list = field_scans[c]
+                        num_scans = len(scan_list)
+                        task_logprint("This calibrator has %s scans" % num_scans)
 
-                    target_index = np.where(field_names==polLeakField) #search for category C (leakage) pol calibrators in field name list
-                    temp = tb.query('FIELD_ID == %s' % target_index[0][0])
-                    pol_lkg_state_ids = np.unique(temp.getcol('STATE_ID'))
+                        if (parang >=30.0 and num_scans >=3):#take first source that satisfies criteria
+                            task_logprint("This calibrator can be used as the leakage pol cal!")
+                            has_leak_polcal = True
+                            polLeakField = field_names[c]
+                            use_parang = True
+                            target_index = np.where(field_names==field_names[c]) #search for category C (leakage) pol calibrators in field name list
+                            temp = tb.query('FIELD_ID == %s' % target_index[0][0])
+                            pol_lkg_state_ids = np.unique(temp.getcol('STATE_ID'))
+                            task_logprint('Found scan for %s!' % field_names[c])
+                            task_logprint('STATE_ID for this target is: %s' % pol_lkg_state_ids)
+                            polarization_lkg_state_IDs.append(pol_lkg_state_ids[0])
+                            calibrator_state_IDs.append(pol_lkg_state_ids[0])
+                            break                            
+                           
+                    except ValueError:
+                        task_logprint('Cannot use this field as calibrator!')
+                if has_leak_polcal == False:
+                    manual_leak_polcalfield ='N'
+                    #str(input("Would you like to manually enter the field name of the pol leakage calibrator? (Y or N)")).upper()
+                    if manual_leak_polcalfield == 'Y':
+                        polLeakField = str(input("Enter field name of pol leakage calibrator: "))
+
+                        target_index = np.where(field_names==polLeakField) #search for category C (leakage) pol calibrators in field name list
+                        temp = tb.query('FIELD_ID == %s' % target_index[0][0])
+                        pol_lkg_state_ids = np.unique(temp.getcol('STATE_ID'))
+                        #print('target_index = ', target_index)
+                        #print('state_ids = ', state_ids)
+                        #task_logprint('Found scan for %s!' % polcals_C[i])
+                        task_logprint('STATE_ID for this target is: %s' % pol_lkg_state_ids)
+                        polarization_lkg_state_IDs.append(pol_lkg_state_ids[0])
+                        calibrator_state_IDs.append(pol_lkg_state_ids[0])
+
+                        polarization_angle_state_select_string = "STATE_ID in [%s" % polarization_angle_state_IDs[0]
+                        for state_ID in range(1, len(polarization_angle_state_IDs)):
+                            polarization_angle_state_select_string += ",%s" % polarization_angle_state_IDs[state_ID]
+                        polarization_angle_state_select_string += "]"
+                        subtable_polangle = tb.query(polarization_angle_state_select_string)
+
+                        polarization_angle_scan_list = list(np.unique(subtable_polangle.getcol("SCAN_NUMBER")))
+                        polarization_angle_scan_select_string = ",".join(str(ii) for ii in polarization_angle_scan_list)
+                        task_logprint(f"Polarization angle calibrator(s) scans are {polarization_angle_scan_select_string}")
+                        polarization_angle_field_list = list(np.unique(subtable_polangle.getcol("FIELD_ID")))
+                        subtable_polangle.close()
+                        polarization_angle_field_select_string = ",".join(str(ii) for ii in polarization_angle_field_list)
+                        task_logprint(f"Polarization angle calibrator(s) are fields {polarization_angle_field_select_string}")
+                    
+                        polarization_lkg_state_select_string = "STATE_ID in [%s" % polarization_lkg_state_IDs[0]
+                        for state_ID in range(1, len(polarization_lkg_state_IDs)):
+                            polarization_lkg_state_select_string += ",%s" % polarization_lkg_state_IDs[state_ID]
+                        polarization_lkg_state_select_string += "]"
+                        subtable_pollkg = tb.query(polarization_lkg_state_select_string)
+
+                        polarization_lkg_scan_list = list(np.unique(subtable_pollkg.getcol("SCAN_NUMBER")))
+                        polarization_lkg_scan_select_string = ",".join(str(ii) for ii in polarization_lkg_scan_list)
+                        task_logprint(f"Polarization lkg calibrator(s) scans are {polarization_lkg_scan_select_string}")
+                        polarization_lkg_field_list = list(np.unique(subtable_pollkg.getcol("FIELD_ID")))
+                        subtable_pollkg.close()
+                        polarization_lkg_field_select_string = ",".join(str(ii) for ii in polarization_lkg_field_list)
+                        task_logprint(f"Polarization lkg calibrator(s) are fields {polarization_lkg_field_select_string}")
+                    else:
+                        warnings.warn('WARNING: No pol leakage calibrator available. Skipping polarization calibration!')
+                        task_logprint('WARNING: No pol leakage calibrator available. Skipping polarization calibration!') #if no leakage calibrator found, set do_pol = False
+                        do_pol = False
+                    
+                else:
+                    #target_index = np.where(field_names==polLeakField) #search for category C (leakage) pol calibrators in field name list
+                    #temp = tb.query('FIELD_ID == %s' % target_index[0][0])
+                    #pol_lkg_state_ids = np.unique(temp.getcol('STATE_ID'))
                     #print('target_index = ', target_index)
                     #print('state_ids = ', state_ids)
-                    task_logprint('Found scan for %s!' % polcals_C[i])
-                    task_logprint('STATE_ID for this target is: %s' % pol_lkg_state_ids)
-                    polarization_lkg_state_IDs.append(pol_lkg_state_ids[0])
-                    calibrator_state_IDs.append(pol_lkg_state_ids[0])
+                    #task_logprint('Found scan for %s!' % polcals_C[i])
+                    #task_logprint('STATE_ID for this target is: %s' % pol_lkg_state_ids)
+                    #polarization_lkg_state_IDs.append(pol_lkg_state_ids[0])
+                    #calibrator_state_IDs.append(pol_lkg_state_ids[0])
 
                     polarization_angle_state_select_string = "STATE_ID in [%s" % polarization_angle_state_IDs[0]
                     for state_ID in range(1, len(polarization_angle_state_IDs)):
@@ -456,10 +567,7 @@ if len(polarization_angle_state_IDs) == 0:
                     polarization_lkg_field_select_string = ",".join(str(ii) for ii in polarization_lkg_field_list)
                     task_logprint(f"Polarization lkg calibrator(s) are fields {polarization_lkg_field_select_string}")
                     
-                else:
-                    warnings.warn('WARNING: No pol leakage calibrator available. Skipping polarization calibration!')
-                    task_logprint('WARNING: No pol leakage calibrator available. Skipping polarization calibration!') #if no leakage calibrator found, set do_pol = False
-                    do_pol = False
+
 
             else:
                 polarization_angle_state_select_string = "STATE_ID in [%s" % polarization_angle_state_IDs[0]
@@ -575,6 +683,17 @@ calibrator_field_select_string = ",".join(str(ii) for ii in calibrator_field_lis
 
 tb.close()
 
+
+task_logprint('==================================================')
+task_logprint('===================calibrators====================')
+task_logprint('| Flux: %s' % fluxField)
+task_logprint('| Bandpass: %s' % BPField )
+task_logprint('| Delay : %s' % DelayField )
+task_logprint('| Pol Angle: %s' % polAngleField )
+task_logprint('| Pol Lkg: %s' % polLeakField)
+task_logprint('| Amplitude: %s' % AmpField)
+task_logprint('| Phase: %s' % phaseField)
+task_logprint('==================================================')
 
 # FIXME Additional date ranges likely need to be added here.
 if ((startdate >= 55918.80) and (startdate <= 55938.98)) or \
@@ -710,85 +829,8 @@ if missingScans > 0:
 else:
     task_logprint("No missing scans found.")
 
-
-# Plot raw data
-# FIXME Needs to be done; Miriam has something in her script for this.
-
-
-# Plot online flags
-try:
-    task_logprint("Plotting online flags")
-    online_flag_name = msname.rstrip("ms") + "flagonline.txt"
-    os.system("rm -rf onlineFlags.png")
-    flagcmd(
-        vis=msname,
-        inpmode="list",
-        inpfile=online_flag_name,
-        action="plot",
-        plotfile="onlineFlags.png",
-        savepars=False,
-    )
-    task_logprint("Online flags plot onlineFlags.png")
-except Exception:
-    task_logprint("Failed to plot online flags")
-
-# Plot antenna locations
-task_logprint("Plotting antenna positions (linear)")
-os.system("rm -rf plotants.png")
-plotants(
-        vis=msname,
-        logpos=False,
-        figfile="plotants.png",
-)
-task_logprint("Antenna positions plot (linear) plotants.png")
-
-task_logprint("Plotting antenna positions (logarithmic)")
-os.system("rm -rf plotantslog.png")
-plotants(
-        vis=msname,
-        logpos=True,
-        figfile="plotantslog.png",
-)
-task_logprint("Antenna positions plot (logarithmic) plotantslog.png")
-
-
-# Make elevation vs. time plot
-# FIXME This channel selection may fail for Hanning or data that has
-# had WIDAR channel averaging applied.
-task_logprint("Plotting elevation vs. time for all fields")
-os.system("rm -rf el_vs_time.png")
-plotms(
-        vis=msname,
-        xaxis="time",
-        yaxis="elevation",
-        selectdata=True,
-        spw="*:31",
-        antenna="0&1;2&3;4&5;6&7",
-        correlation=corrstring,
-        averagedata=False,
-        transform=False,
-        extendflag=False,
-        iteraxis="",
-        customsymbol=False,
-        coloraxis="field",
-        customflaggedsymbol=False,
-        plotrange=[],
-        title="Elevation vs. time",
-        xlabel="",
-        ylabel="",
-        showmajorgrid=False,
-        showminorgrid=False,
-        plotfile="el_vs_time.png",
-        highres=True,
-        overwrite=True,
-        showgui=False,
-)
-task_logprint("Elevation vs. time plot el_vs_time.png")
-
-
-task_logprint("Finished EVLA_pipe_msinfo.py")
+task_logprint("Finished EVLA_pipe_msinfo_short.py")
 task_logprint(f"QA2 score: {QA2_msinfo}")
 time_list = runtiming("msinfo", "end")
 
 pipeline_save()
-

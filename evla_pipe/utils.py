@@ -2229,3 +2229,70 @@ def getBCalStatistics(calTable, innerbuff=0.1):
     return outDict
 
 
+def parangle(HA,lat,dec):
+#Function to calcualte the parallactic angle.
+#   Equations from:
+#   "A treatise on spherical astronomy" By Sir Robert Stawell Ball
+#   (p. 91, as viewed on Google Books)
+#   sin(eta)*sin(z) = cos(lat)*sin(HA)
+#   cos(eta)*sin(z) = sin(lat)*cos(dec) - cos(lat)*sin(dec)*cos(HA)
+#   Where eta is the parallactic angle, z is the zenith angle, lat is the
+#   observer's latitude, dec is the declination, and HA is the hour angle.
+#   thus:
+#   tan(eta) = cos(lat)*sin(HA) / (sin(lat)*cos(dec)-cos(lat)*sin(dec)*cos(HA))
+    z = zeros((1),dtype={'names':['parangle','slope'],'formats':['f8','i4']})
+    slope=1.0
+
+    eta = arctan2(cos(lat)*sin(HA), (sin(lat)*cos(dec)-cos(lat)*sin(dec)*cos(HA)))
+    if(eta<0):
+        slope=-1.0
+        eta+=2.0*pi
+    z['parangle'] = eta
+    z['slope'] = slope
+
+    return z
+	
+def hourangle(ra,dec,time,timeunit='s',observatory='VLA'):	
+#Function to compute the hourangle of a source at a given time, given an observatory name
+#This function uses the measures tool to compute the epoch and the corresponding position
+    me.doframe(me.observatory(observatory))
+    tm=me.epoch('UTC',str(time)+'s')
+    last=me.measure(tm,'LAST')['m0']['value']
+    last-=floor(last)
+    lst=qa.convert(str(last)+'d','rad')
+    ha=lst['value']-ra
+
+    return ha
+
+#def parang2time(ra,dec,pa,painc)
+
+def getpainfo(msname='',field=''):
+    print("Determining parallactic info for field: ", field)
+    tb.open(msname+'/OBSERVATION')
+    longitude = me.observatory(tb.getcol('TELESCOPE_NAME')[0])['m0']['value'] # The longitude in radians runs from -pi to pi
+    lat = me.observatory(tb.getcol('TELESCOPE_NAME')[0])['m1']['value'] # The latitude runs from zero to -pi/2 tp pi/2
+    height = me.observatory(tb.getcol('TELESCOPE_NAME')[0])['m2']['value']
+    tb.close()
+    north = pi/2.0
+    tb.open(msname+'/FIELD') # opening the field subtable to get the pointing direction of the ms
+    field_names = tb.getcol('NAME')
+    field_i = np.where(field_names == field)[0][0]
+    ra = tb.getcol('PHASE_DIR')[0][0][field_i] # This currently assumes only one field is of relevance - needs to be changed for the most general case
+    dec = tb.getcol('PHASE_DIR')[1][0][field_i]
+        
+    tb.close()
+        
+    tb.open(msname)
+    subtable = tb.query("FIELD_ID == %s" % field_i)
+    time1 = subtable.getcol('TIME').min()
+    time2 = subtable.getcol('TIME').max()
+    tb.close()
+    ha1 = hourangle(ra,dec,time1)
+    ha2 = hourangle(ra,dec,time2)
+    pa1 = parangle(HA=ha1,lat=lat,dec=dec)
+    pa2 = parangle(HA=ha2,lat=lat,dec=dec)
+    para1, para2 = pa1['parangle'][0]*180/pi,pa2['parangle'][0]*180/pi
+
+    print("Over the span of %s hours the source %s changed parallactic angle by %s degrees" %(round((time2-time1)/3600,2),field,round(para2-para1,10)))
+
+    return abs(para1-para2)

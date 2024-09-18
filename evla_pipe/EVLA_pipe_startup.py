@@ -69,6 +69,7 @@ task_logprint(f"SDM used is: {SDM_name}")
 mymodel_already_set = 1
 try:
     mymodel
+    scratch = mymodel == "y"
 except NameError:
     mymodel_already_set = 0
     mymodel = input("Create the real model column (y/[n]): ").lower()
@@ -77,7 +78,8 @@ except NameError:
 
 myHanning_already_set = 1
 try:
-    myHanning
+    #myHanning
+    do_hanning
 except NameError:
     myHanning_already_set = 0
     hanning_input_results = input("Hanning smooth the data (y/[n]): ").lower()
@@ -85,7 +87,8 @@ except NameError:
 
 myPol_already_set = 1
 try:
-    myPol
+    #myPol
+    do_pol
 except NameError:
     myPol_already_set = 0
     dopol_input_results = input("Perform polarization calibration? (y/[n]): ").lower()

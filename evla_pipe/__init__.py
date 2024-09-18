@@ -89,6 +89,15 @@ def exec_script(name, context):
 
 
 def run_pipeline(context=None):
+    global SDM_name
+    global mymodel
+    global do_hanning
+    global do_pol
+    SDM_name = "TDRW0001.sb35624494.eb35628826.58395.23719237269"
+    mymodel = "y"
+    do_hanning = "y"
+    do_pol = True
+    print(SDM_name, mymodel, do_hanning, do_pol, context)
     if context is None:
         context = globals()
     try:
@@ -98,21 +107,22 @@ def run_pipeline(context=None):
 
         # Import the data to CASA.
         exec_script("EVLA_pipe_import", context)
-
+        
         # Hanning smooth.
         # NOTE: This step is optional and likely unwanted for spectral line
         # projects, but Hanning may be important if there is strong, narrowband RFI.
         exec_script("EVLA_pipe_hanning", context)
 
         # Get information from the MS that will be needed later, list the data, and
+        
         # write generic diagnostic plots.
-        exec_script("EVLA_pipe_msinfo", context)
-
+        exec_script("EVLA_pipe_msinfo_short", context)
+        '''
         # Deterministic flagging: (1) time-based for online flags, shadowed data,
         # zeroes, pointing scans, quacking, and (2) channel-based for end 5% of
         # channels of each SpW, 10 end channels at edges of basebands.
         exec_script("EVLA_pipe_flagall", context)
-
+        
         # Prepare for calibrations. Fill model columns for primary calibrators.
         exec_script("EVLA_pipe_calprep", context)
 
@@ -173,16 +183,20 @@ def run_pipeline(context=None):
 
         # Calculate data weights based on standard deviation within each SpW.
         exec_script("EVLA_pipe_statwt", context)
-
+        
         # Make final uv plots.
         exec_script("EVLA_pipe_plotsummary", context)
-
+        
         # Collect relevant plots and tables.
         exec_script("EVLA_pipe_filecollect", context)
 
         # Write weblog.
         exec_script("EVLA_pipe_weblog", context)
+        '''
     except KeyboardInterrupt as e:
         logprint(f"Keyboard Interrupt: {e}")
     return context
+
+
+
 

@@ -112,7 +112,7 @@ if "#" in spw_names[0]:
             band = BB[0]
             bband = BB[1]
             bbspw = BB[2]
-            if band == "X" and len(bbspw) == 1:
+            if (band == "C" and len(bbspw)==1) or (band == "X" and len(bbspw)==1):
                 print("-- ", band, bband, bbspw)
                 task_logprint(
                     "Seems to have encountered a reference pointing spw; "
@@ -190,7 +190,7 @@ if "#" in spw_names[0]:
             band = BB[0]
             bband = BB[1]
             bbspw = BB[2]
-            if band == "X" and len(bbspw) == 1:
+            if (band == "C" and len(bbspw)==1) or (band == "X" and len(bbspw)==1):
                 print("-- ", band, bband, bbspw)
                 task_logprint(
                     "Seems to have encountered a reference pointing spw; "

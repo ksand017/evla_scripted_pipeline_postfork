@@ -23,6 +23,10 @@ time_list = runtiming("filecollect", "start")
 caltables_dir = "./final_caltables"
 weblog_dir = "./weblog"
 
+# FIXME if skipping calibration steps and just
+# creating weblog, need to redefine priorcals files
+
+
 # FIXME move to using `pathlib`
 # Check if directories exists - if not create one
 if not os.path.exists(caltables_dir):

@@ -7,14 +7,15 @@ NB: in CASA 3.4.0 can only set models based on field ID and spw, not
 by intents or scans
 """
 
-from casatasks import setjy, split, fluxscale, casalog, flagdata
+from casatasks import setjy, split
 import numpy as np
 import scipy as sp
 import math
+import shelve
 
-from casatasks import gaincal, applycal, polcal
+from casatasks import gaincal, applycal, listobs
 from . import pipeline_save
-from .utils import runtiming, logprint, find_standards, find_EVLA_band, RefAntHeuristics, MAINLOG
+from .utils import runtiming, logprint, find_standards, find_EVLA_band, RefAntHeuristics
 
 pi = np.pi
 
@@ -76,18 +77,25 @@ def polyFit(polAngleSource, band, refFreq):
 
     # RM and X_0 values come from Table 4. RM Values for the Four Sources
     # (also from 2013 Perley, Butler paper)
-    cal_data2013 = np.genfromtxt('/lustre/aoc/students/ksanders/EVLA_SCRIPTED_PIPELINE/EVLA_Scripted_Pipeline/EVLA_SCRIPTED_PIPELINE/data/PolCals_2013_3C48.3C138.3C147.3C286.dat')
+    cal_data2013 = np.genfromtxt('/lustre/aoc/students/ksanders/EVLA_SCRIPTED_PIPELINE/EVLA_SP_postfork/evla_scripted_pipeline_postfork/data/PolCals_2013_3C48.3C138.3C147.3C286.dat')
 
     freqFitting = cal_data2013[:,0]
     print('3C48' in polAngleSource)
     if ('3C48' in polAngleSource):
             pol_perc = cal_data2013[:,1]
             pol_angle = cal_data2013[:,2]
-
+            #pol = p48
+            # wavelength range (cm): 1-18
+            #RM = -68 # rad/m^2
+            #X_0 = 122*pi/180 # in radians
             task_logprint("Polarization angle calibrator is 3C48\n")
     elif ("3C138" in polAngleSource):
             pol_perc = cal_data2013[:,3]
             pol_angle = cal_data2013[:,4]
+            #pol = p138
+            # wavelength range (cm): 2-22
+            #RM = 0
+            #X_0 = -10*pi/180
             task_logprint("Polarization angle calibrator is 3C138\n")
             freqFitting = np.delete(freqFitting, 7, None)
             task_logprint("Not evaluating at frequency 3.75 GHz due to null value"
@@ -100,12 +108,18 @@ def polyFit(polAngleSource, band, refFreq):
                     exit()
             pol_perc = cal_data2013[:,5]
             pol_angle = cal_data2013[:,6]
-
+            #pol = p147
+            # wavelength range (cm): 1-3
+            #RM = -1467
+            #X_0 = 88*pi/180
             task_logprint("Polarization angle calibrator is 3C147\n")
     elif ("3C286" in polAngleSource):
             pol_perc = cal_data2013[:,7]
             pol_angle = cal_data2013[:,8]
-
+            #pol = p286
+            # wavelength range (cm): 1->30
+            #RM = 0
+            #X_0 = 33*pi/180
             task_logprint("Polarization angle calibrator is 3C286\n")
     else:
     # should never get here, as should have already checked that it was 1
@@ -142,10 +156,12 @@ def polyFit(polAngleSource, band, refFreq):
             freqFitting = freqFitting[22]
             pol = pol_perc[22]
             ang = pol_angle[22]
+            #freqFitting = freqFitting[22:24]
     elif (band == 'Q'):
             freqFitting = freqFitting[23]
             pol = pol_perc[23]
             ang = pol_angle[23]
+            #freqFitting = freqFitting[23:29]
 
     task_logprint("frequencies = " +str(freqFitting))
     task_logprint("reference frequency = "+str(refFreq))
@@ -163,13 +179,12 @@ def polyFit(polAngleSource, band, refFreq):
     #print([popt, p_ref, RM, X_0])
     return popt_pf, popt_pa, p_ref
 
-task_logprint("*** Starting EVLA_pipe_polcal_testing_v2.py ***")
-time_list = runtiming("polcal", "start")
-QA2_polcal = "Pass"
 
 
 if do_pol == True:
-    use_parang = True
+    task_logprint("*** Starting EVLA_pipe_polcal_testing_v2.py ***")
+    time_list = runtiming("calprep", "start")
+    QA2_calprep = "Pass"
 
     # define name of polarization calibration measurement set
     if (ms_active[-1] == '/'):
@@ -179,28 +194,22 @@ if do_pol == True:
     else:
         visPola = 'pola_cal.ms/'
     task_logprint("Polarization .ms is "+visPola+"\n")
-    
+
     # split out data column from .ms from user input
     if not os.path.exists(visPola):
-        try:
-            split(vis=ms_active, outputvis=visPola, datacolumn='corrected')
-        except:
-            split(vis=ms_active, outputvis=visPola, datacolumn='data')
+        split(vis=ms_active, outputvis=visPola, datacolumn='data')
 
     #create listobs file for pol MS
     visPola_listname = visPola.rstrip("ms/")+"listobs.txt"
     os.system(f"rm -rf {visPola_listname}")
     listobs(visPola, listfile=visPola_listname)
 
-    task_logprint("Doing inital flagging of polarization .ms")
-    flagdata(vis=visPola, mode='tfcrop', field=calibrator_field_select_string, correlation='', freqfit='poly', extendflags=False, flagbackup=False)
-    flagdata(vis=visPola, mode='rflag', field=calibrator_field_select_string, correlation='RL,LR', datacolumn='data', extendflags=True, flagbackup=False)
 
     task_logprint("Finding a reference antenna")
 
     refantfield = polarization_angle_field_select_string
     findrefant = RefAntHeuristics(
-        vis=visPola,
+        vis=ms_active,
         field=refantfield,
         geometry=True,
         flagging=True,
@@ -218,10 +227,11 @@ if do_pol == True:
     plotms(vis=visPola,field=polAngleField,correlation='RR',
            timerange='',antenna='',
            xaxis='frequency',yaxis='amp',ydatacolumn='model', plotfile=str(polAngleField)+'_ampvsfreq_RR_model.png', overwrite=True)
+    
 
-    #task_logprint("polLeakSource = "+str(polLeakField)+"\n")
-    #task_logprint("polAngleSource = "+str(polAngleField)+"\n")
-    #task_logprint("fluxSource = "+str(fluxField)+"\n")
+    task_logprint("polLeakSource = "+str(polLeakField)+"\n")
+    task_logprint("polAngleSource = "+str(polAngleField)+"\n")
+    task_logprint("fluxSource = "+str(fluxField)+"\n")
 
 
 
@@ -269,6 +279,7 @@ if do_pol == True:
     # first determine what frequency bands are in the .ms
     bands = set()
     for i in range(len(bandList)):
+        print(bandList[i])
         if ('_L#' in bandList[i]):
             bands.add('L')
             spwL = i
@@ -300,36 +311,10 @@ if do_pol == True:
     task_logprint("frequency array is : "+str(freqI)+"\n")
 
     task_logprint("bands are: "+str(bands)+"\n")
-    task_logprint("bands are: "+str(bandsList)+"\n")
-    unique_spw_band_map =  np.unique(spw_band_map)
-    # check bands in bandlist to make sure only calibrating science bands, not pointing bands
-    # split off each band and check intents?
-    bandList_temp = []
-    bandSPW = []
-    print('spw_band_map = ', spw_band_map)
-    print('unique spw_band_map = ', np.unique(spw_band_map))
-    for band in unique_spw_band_map:
-        print('band is ', band)
-        bandSPW_temp = []
-        for i in range(len(spw_band_map)):
-            if spw_band_map[i] == band:
-                bandSPW_temp.append(i)
-                print('bandSPW_temp = ', bandSPW_temp)
-        bandSPW.append(bandSPW_temp)
-        band_outvisname = band+'band.ms/'
-        os.system(f"rm -rf {band_outvisname}")
-        split(vis = visPola, outputvis = band_outvisname, spw = str(bandSPW_temp[0])+'~'+str(bandSPW_temp[-1]), datacolumn='data')
-        
-    #print('bandSPW = ', bandSPW)
-    #print('bandList = ', bandList)
-    #spw_start = 0
     
+    spw_start = 0
     # example: bandsList = ['L', 'S', 'K']
-    for b in range(len(unique_spw_band_map)):
-        band = unique_spw_band_map[b]
-        spw_start = bandSPW[b][0]
-        spw_end = bandSPW[b][-1]
-        '''                             
+    for band in bandsList:
         if (band == 'L'):
             spw_end = spwL+1
         elif (band == 'S'):
@@ -350,20 +335,16 @@ if do_pol == True:
             print(str(band)+" is not a recognized band for calibration.  Please"
                   "note that this band will not be calibrated for, exiting script.\n")
             exit()
-        '''
-        task_logprint("Attempting to calibrate band: "+band+"\n")
-        tb.open(band+'band.ms/')
-        unique_scan_nums = np.unique(tb.getcol('SCAN_NUMBER'))
-        tb.close()
-        if len(unique_scan_nums) <= 3:
-            task_logprint('This band does not have enough scans to calibrate!')
-            continue
 
-        freqI_band = freqI[spw_start:spw_end+1]
-        fluxI_band = fluxI[spw_start:spw_end+1]
+        print("Band that is being calibrated right now is: "+band+"\n")
 
-        #task_logprint("Band that is being calibrated right now is: "+band+"\n")
+        freqI_band = freqI[spw_start:spw_end]
+        fluxI_band = fluxI[spw_start:spw_end]
+
+        task_logprint("Band that is being calibrated right now is: "+band+"\n")
         task_logprint('spw_start, spw_end = '+str(spw_start)+" - " +str(spw_end))
+        freqI_band = freqI[spw_start:spw_end]
+        fluxI_band = fluxI[spw_start:spw_end]
 
         task_logprint("freqI for band is "+str(freqI_band)+"\n")
         task_logprint("fluxI for band is "+str(fluxI_band)+"\n")
@@ -386,6 +367,7 @@ if do_pol == True:
                 i_ref = fluxI_band[v]
 
         task_logprint("refFreqI is :"+str(refFreqI)+" Hz \n")
+
 
         # determine polindex coefficients, polarization fraction, RM, and X_0
         # based on calibrator and band
@@ -415,11 +397,10 @@ if do_pol == True:
         task_logprint("Determining setjy spix input\n")
         popt_I, pcov_I = sp.optimize.curve_fit(fitterI,freqI_band,fluxI_band)
         print('popt_I = ', popt_I)
-        print(str(spw_start)+'~'+str(spw_end))
+        print(str(spw_start)+'~'+str(spw_end-1))
 
-        # Set the polarized model for the pol angle calibrator
         setjy_full_dict = setjy(vis=visPola, standard='manual', field=polAngleField, 
-                            spw=str(spw_start)+'~'+str(spw_end),
+                            spw=str(spw_start)+'~'+str(spw_end-1),
                             fluxdensity=[i_ref, 0, 0, 0],
                             spix = popt_I,
                             reffreq=str(refFreqI)+'Hz',
@@ -427,7 +408,11 @@ if do_pol == True:
                             polangle = coeffs_pa,
                             usescratch=True)
 
-        
+
+
+
+
+    
         plotms(vis=visPola,field=polAngleField,correlation='RL',
                timerange='',antenna='',
                xaxis='frequency',yaxis='amp',ydatacolumn='model', plotfile=str(polAngleField)+'_ampvsfreq_RL_model.png', overwrite=True)
@@ -436,8 +421,8 @@ if do_pol == True:
                timerange='',antenna='',
                xaxis='frequency',yaxis='phase',ydatacolumn='model', plotfile=str(polAngleField)+'_phasevsfreq_RL_model.png', overwrite=True)
 
-        # Solving for the Cross Hand Single Band Delays
-        kcross_sbd = polAngleField+'_'+band+'_band_data.sbd.Kcross'
+        # Solving for the Cross Hand Delays
+        kcross_sbd = polAngleField+'_'+band+'_band_data.Kcross'
         gaincal(vis=visPola, caltable=kcross_sbd, field=polAngleField,
                 spw=str(spw_start)+'~'+str(spw_end-1)+':'+str(lower)+'~'+str(upper),
                 gaintype='KCROSS',
@@ -449,78 +434,3 @@ if do_pol == True:
                 parang=True)
 
         plotms(vis=kcross_sbd, xaxis='frequency', yaxis='delay', antenna = refAnt, coloraxis='corr', plotfile=str(polAngleField)+'_delayvsfreq_kcross_sbd_sol.png', overwrite=True)
-
-
-        # Solving for the Cross Hand Multiband Delays
-        kcross_mbd = polAngleField+'_'+band+'_band_data.mbd.Kcross'
-        gaincal(vis=visPola, caltable=kcross_mbd, field=polAngleField,
-                spw=str(spw_start)+'~'+str(spw_end-1)+':'+str(lower)+'~'+str(upper),
-                gaintype='KCROSS',
-                solint='inf',
-                combine='scan,spw', 
-                refant=refAnt,
-                gaintable=[''],
-                gainfield=[''],
-                parang=True)
-
-        plotms(vis=kcross_mbd, xaxis='frequency', yaxis='delay', antenna = refAnt, coloraxis='corr', plotfile=str(polAngleField)+'_delayvsfreq_kcross_mbd_sol.png', overwrite=True)
-
-        task_logprint('Setting model for '+polLeakField)
-        file_spix = np.genfromtxt(visPola.rstrip('_pola_cal.ms/')+'.spix.field'+polLeakField+'.band'+band+'.txt', dtype=str)
-        file_spix_ndarray = str(file_spix).rsplit(',')
-        print('file_spix = ', file_spix_ndarray)
-        spix_str_a = file_spix_ndarray[1]
-        spix_str_b = file_spix_ndarray[2]
-        spix_flt_a = float(spix_str_a)
-        spix_flt_b = float(spix_str_b)
-        print('input spectral index = ', spix_flt_a, spix_flt_b)
-        file_fd = np.genfromtxt(visPola.rstrip('_pola_cal.ms/')+'.fluxdensities.field'+polLeakField+'.band'+band+'.txt', dtype=str)
-        Table = []
-        Freqs = []
-        StokesI = []
-        for i in range(len(file_fd)):
-            row = file_fd[i].rsplit(',')
-            Freqs.append(float(row[0]))
-            StokesI.append(float(row[1]))
-
-        Freqs = np.array(Freqs)
-        reffreq = refFreqI/(1e9)
-        freqs_i = np.where(abs(Freqs-reffreq)==min(abs(Freqs-reffreq)))[0][0]
-
-        print('reference frequency for setjy() = ', Freqs[freqs_i])
-        print('Flux density = ', StokesI[freqs_i])
-        
-        setjy(vis=visPola, standard='manual', field=polLeakField, 
-                            spw=str(spw_start)+'~'+str(spw_end), scalebychan=True, listmodels=False,
-                            fluxdensity=[StokesI[freqs_i], 0, 0, 0],
-                            spix = [spix_flt_a, spix_flt_b],
-                            reffreq=str(Freqs[freqs_i]*(1e9))+'Hz',
-                            usescratch=True,useephemdir=False,interpolation="nearest", ismms=False)
-        
-        plotms(vis=visPola,field=polLeakField,correlation='RR',
-           timerange='',antenna='ea01&ea02',
-           xaxis='frequency',yaxis='amp',ydatacolumn='model', plotfile='polLeakcal_aftersetjy_visPola.png', overwrite=True)
-        
-        print('len(bandSPW[b]) = ',len(bandSPW[b]))
-        if use_parang == True:
-            dtab = polLeakField+'_'+band+'_band_data.DfQU'
-            polcal(vis = visPola, caltable = dtab, field=polLeakField,
-                   spw = str(spw_start)+'~'+str(spw_end-1)  , refant='ea10', poltype='Df+QU', solint='inf,2MHz',
-                   combine='scan', gaintable = [kcross_mbd], gainfield=[''], spwmap=[len(bandSPW[b])*[2]], append=False)
-        else:
-            dtab = polLeakField+'_'+band+'_band_data.Df'
-            polcal(vis = visPola, caltable = dtab, field=polLeakField,
-                   spw = str(spw_start)+'~'+str(spw_end-1)  , refant='ea10', poltype='Df', solint='inf,2MHz',
-                   combine='scan', gaintable = [kcross_mbd], gainfield=[''], spwmap=[len(bandSPW[b])*[2]], append=False)
-
-        plotms(vis = dtab, xaxis='freq', yaxis='amp', coloraxis='corr', antenna='ea01', plotfile=polLeakField+'_'+band+'_band.ampvsfreq.Dfsolns.png', overwrite=True)
-
-        plotms(vis = dtab, xaxis='chan', yaxis='phase', coloraxis='corr', antenna='ea01', plotrange=[-1,-1,-180,180], plotfile=polLeakField+'_'+band+'_band.phasevschan.Dfsolns.png', overwrite=True)
-
-
-
-task_logprint(f"QA2 score: {QA2_polcal}")
-task_logprint("Finished EVLA_pipe_polcal_testing_v2.py")
-time_list = runtiming("polcal", "end")
-
-pipeline_save()

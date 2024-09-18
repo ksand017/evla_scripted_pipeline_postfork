@@ -40,7 +40,8 @@ os.system(f"rm -rf {fluxscale_output}")
 casalog.setlogfile(fluxscale_output)
 
 
-rmtables("fluxgaincalFcal.g")
+#rmtables("fluxgaincalFcal.g")
+os.system("rm -rf fluxgaincalFcal.g")
 fluxscale_result = fluxscale(
     vis="calibrators.ms",
     caltable="fluxgaincal.g",
@@ -89,10 +90,13 @@ for field_id in fluxscale_result.keys():
 # have been filled out with the reference frequencies of the spectral
 # window table.
 results = []
+
 for source in np.unique(sources):
     indices = np.argwhere(np.array(sources) == source).squeeze(axis=1)
     bands = [find_EVLA_band(center_frequencies[spws[i]]) for i in indices]
     for band in np.unique(bands):
+        spix_file = open(fluxscale_output.rstrip('fluxdensities')+'spix.field'+source+'.band'+band+'.txt', 'w')
+        spix_file.write("#field, spix1, spix2\n")
         lfreqs = []
         lfds = []
         lerrs = []
@@ -179,10 +183,16 @@ for source in np.unique(sources):
         reffreq = 10 ** lfreqs[0] / 1e9
         fluxdensity = 10 ** (aa + bb * lfreqs[0])
         spix = bb
+        line2write = source+','+str(bb)+','+str(aa)+'\n'
+        spix_file.write(line2write)
+        spix_file.close()
         results.append([source, uspws, fluxdensity, spix, SNR, reffreq])
+        print('results = ', results)
         task_logprint(
             f"{source} {band} fitted spectral index = {spix} and SNR = {SNR}"
         )
+        results_file = open(fluxscale_output+'.field'+source+'.band'+band+'.txt', 'w')
+        results_file.write("#Frequency data error fitted_data\n")
         task_logprint("Frequency, data, error, and fitted data:")
         for ii in range(len(lfreqs)):
             flux_exp = 10 ** lfreqs[ii] / 1e9
@@ -190,7 +200,9 @@ for source in np.unique(sources):
             SS = fluxdensity * (flux_exp / reffreq) ** spix
             fderr = lerrs[ii] * err_exp / np.log10(np.e)
             task_logprint(f"    {flux_exp} {err_exp} {fderr} {SS}")
-
+            line_2_write = str(flux_exp)+','+str(err_exp)+','+str(fderr)+','+str(SS)+'\n'
+            results_file.write(line_2_write)
+        results_file.close()
 task_logprint("Setting power-law fit in the model column")
 for result in results:
     for spw_i in result[1]:
