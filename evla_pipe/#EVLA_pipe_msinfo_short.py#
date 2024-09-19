@@ -3,7 +3,7 @@
 
 import numpy as np
 import numpy
-import warnings 
+import warnings
 
 from casatasks import (listobs, plotweather, flagcmd, plotants)
 from casatools import table
@@ -412,7 +412,7 @@ else:
 
 polcals_A = ['J1331+3030', '3c286', '3C286', 'J0521+1638', '3c138', '3C138', 'J0137+3309', '0137+331=3C48', '3c48', '3C48']
 #np.genfromtxt('../../EVLA_Scripted_Pipeline/EVLA_SCRIPTED_PIPELINE/data/catA_polcals.dat', dtype=np.str_)
-polcals_C = ['J0542+4951', '3c147', '3C147', 'J1407+2827', 'OQ208', 'Oq208', 'oq208', 'J2355+4950'] # 'J0259+0747'
+polcals_C = ['J0542+4951', '3c147', '3C147', 'J1407+2827', 'OQ208', 'Oq208', 'oq208'] # 'J0259+0747'
 use_parang = False
 if len(polarization_angle_state_IDs) == 0:
     if do_pol == True:
@@ -446,7 +446,7 @@ if len(polarization_angle_state_IDs) == 0:
             for i in range(len(polcals_C)):
                 if polcals_C[i] in field_names:
                     if has_leak_polcal == False:
-                        polLeakField = "%s" % polcals_C[i]
+                        polLeakField += "%s" % polcals_C[i]
                     else:
                         polLeakField += ",%s" % polcals_C[i]
                     has_leak_polcal = True
@@ -473,7 +473,7 @@ if len(polarization_angle_state_IDs) == 0:
                     if (parang >=30.0 and num_scans >=3):#take first source that satisfies criteria
                         task_logprint("This calibrator can be used as the leakage pol cal!")
                         if has_leak_polcal == False:
-                            polLeakField = "%s" % field_names[c]
+                            polLeakField += "%s" % field_names[c]
                         else:
                             polLeakField += ",%s" % field_names[c]
                         has_leak_polcal = True

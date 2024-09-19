@@ -9,6 +9,8 @@ from pathlib import Path
 import numpy as np
 # NOTE `np` is aliased in `getBCalStatistics` so use `numpy` directly there.
 import numpy
+from scipy import *
+from numpy import *
 
 from casatasks import gaincal
 from casatools import ms as mstool
@@ -17,6 +19,7 @@ tb = table()
 me = measures()
 qa = quanta()
 msmd = msmetadata()
+pi = np.pi
 
 from . import PIPE_PATH
 from .compat import running_within_casa

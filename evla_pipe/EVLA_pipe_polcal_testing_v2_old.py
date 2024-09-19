@@ -5,8 +5,7 @@ Prepare for calibrations
 Fill models for all primary calibrators.
 NB: in CASA 3.4.0 can only set models based on field ID and spw, not
 by intents or scans
-"""
-
+""" 
 import numpy as np
 import scipy as sp
 import math
@@ -166,7 +165,6 @@ task_logprint("*** Starting EVLA_pipe_polcal_testing_v2.py ***")
 time_list = runtiming("polcal", "start")
 QA2_polcal = "Pass"
 
-print('leak_polcal_type', leak_polcal_type)
 
 if do_pol == True:
     use_parang = True
@@ -464,70 +462,63 @@ if do_pol == True:
                 parang=True)
 
         plotms(vis=kcross_mbd, xaxis='frequency', yaxis='delay', antenna = refAnt, coloraxis='corr', plotfile=str(polAngleField)+'_delayvsfreq_kcross_mbd_sol.png', overwrite=True)
-        polLeakFields = polLeakField.rsplit(',')
-        print('polLeakField = ', polLeakFields, polLeakFields[0])
-        for pl in range(len(leak_polcal_type)):
-            task_logprint('Setting model for '+polLeakFields[pl])
-            file_spix = np.genfromtxt(visPola.rstrip('_pola_cal.ms/')+'.spix.field'+polLeakFields[pl]+'.band'+band+'.txt', dtype=str)
-            file_spix_ndarray = str(file_spix).rsplit(',')
-            print('file_spix = ', file_spix_ndarray)
-            spix_str_a = file_spix_ndarray[1]
-            spix_str_b = file_spix_ndarray[2]
-            spix_flt_a = float(spix_str_a)
-            spix_flt_b = float(spix_str_b)
-            print('input spectral index = ', spix_flt_a, spix_flt_b)
-            file_fd = np.genfromtxt(visPola.rstrip('_pola_cal.ms/')+'.fluxdensities.field'+polLeakFields[pl]+'.band'+band+'.txt', dtype=str)
-            Table = []
-            Freqs = []
-            StokesI = []
-            for i in range(len(file_fd)):
-                row = file_fd[i].rsplit(',')
-                Freqs.append(float(row[0]))
-                StokesI.append(float(row[1]))
 
-            Freqs = np.array(Freqs)
-            reffreq = refFreqI/(1e9)
-            freqs_i = np.where(abs(Freqs-reffreq)==min(abs(Freqs-reffreq)))[0][0]
+        task_logprint('Setting model for '+polLeakField)
+        file_spix = np.genfromtxt(visPola.rstrip('_pola_cal.ms/')+'.spix.field'+polLeakField+'.band'+band+'.txt', dtype=str)
+        file_spix_ndarray = str(file_spix).rsplit(',')
+        print('file_spix = ', file_spix_ndarray)
+        spix_str_a = file_spix_ndarray[1]
+        spix_str_b = file_spix_ndarray[2]
+        spix_flt_a = float(spix_str_a)
+        spix_flt_b = float(spix_str_b)
+        print('input spectral index = ', spix_flt_a, spix_flt_b)
+        file_fd = np.genfromtxt(visPola.rstrip('_pola_cal.ms/')+'.fluxdensities.field'+polLeakField+'.band'+band+'.txt', dtype=str)
+        Table = []
+        Freqs = []
+        StokesI = []
+        for i in range(len(file_fd)):
+            row = file_fd[i].rsplit(',')
+            Freqs.append(float(row[0]))
+            StokesI.append(float(row[1]))
 
-            print('reference frequency for setjy() = ', Freqs[freqs_i])
-            print('Flux density = ', StokesI[freqs_i])
-            
-            setjy(vis=visPola, standard='manual', field=polLeakFields[pl], 
-                                spw=str(spw_start)+'~'+str(spw_end), scalebychan=True, listmodels=False,
-                                fluxdensity=[StokesI[freqs_i], 0, 0, 0],
-                                spix = [spix_flt_a, spix_flt_b],
-                                reffreq=str(Freqs[freqs_i]*(1e9))+'Hz',
-                                usescratch=True,useephemdir=False,interpolation="nearest", ismms=False)
-            
-            plotms(vis=visPola,field=polLeakFields[pl],correlation='RR',
-            timerange='',antenna='ea01&ea02',
-            xaxis='frequency',yaxis='amp',ydatacolumn='model', plotfile='polLeak'+polLeakFields[pl]+'_aftersetjy_visPola.png', overwrite=True)
-            
-            print('len(bandSPW[b]) = ',len(bandSPW[b]))
-            if leak_polcal_type[pl] == 'DfQU':
-                use_parang = True
-            else:
-                use_parang = False
+        Freqs = np.array(Freqs)
+        reffreq = refFreqI/(1e9)
+        freqs_i = np.where(abs(Freqs-reffreq)==min(abs(Freqs-reffreq)))[0][0]
 
-            if use_parang == True:
-                dtab = polLeakFields[pl]+'_'+band+'_band_data.DfQU'
-                polcal(vis = visPola, caltable = dtab, field=polLeakFields[pl],
-                    spw = str(spw_start)+'~'+str(spw_end-1)  , refant='ea10', poltype='Df+QU', solint='inf,2MHz',
-                    combine='scan', gaintable = [kcross_mbd], gainfield=[''], spwmap=[len(bandSPW[b])*[2]], append=False)
-            else:
-                dtab = polLeakFields[pl]+'_'+band+'_band_data.Df'
-                polcal(vis = visPola, caltable = dtab, field=polLeakFields[pl],
-                    spw = str(spw_start)+'~'+str(spw_end-1)  , refant='ea10', poltype='Df', solint='inf,2MHz',
-                    combine='scan', gaintable = [kcross_mbd], gainfield=[''], spwmap=[len(bandSPW[b])*[2]], append=False)
+        print('reference frequency for setjy() = ', Freqs[freqs_i])
+        print('Flux density = ', StokesI[freqs_i])
+        
+        setjy(vis=visPola, standard='manual', field=polLeakField, 
+                            spw=str(spw_start)+'~'+str(spw_end), scalebychan=True, listmodels=False,
+                            fluxdensity=[StokesI[freqs_i], 0, 0, 0],
+                            spix = [spix_flt_a, spix_flt_b],
+                            reffreq=str(Freqs[freqs_i]*(1e9))+'Hz',
+                            usescratch=True,useephemdir=False,interpolation="nearest", ismms=False)
+        
+        plotms(vis=visPola,field=polLeakField,correlation='RR',
+           timerange='',antenna='ea01&ea02',
+           xaxis='frequency',yaxis='amp',ydatacolumn='model', plotfile='polLeakcal_aftersetjy_visPola.png', overwrite=True)
+        
+        print('len(bandSPW[b]) = ',len(bandSPW[b]))
+        if use_parang == True:
+            dtab = polLeakField+'_'+band+'_band_data.DfQU'
+            polcal(vis = visPola, caltable = dtab, field=polLeakField,
+                   spw = str(spw_start)+'~'+str(spw_end-1)  , refant='ea10', poltype='Df+QU', solint='inf,2MHz',
+                   combine='scan', gaintable = [kcross_mbd], gainfield=[''], spwmap=[len(bandSPW[b])*[2]], append=False)
+        else:
+            dtab = polLeakField+'_'+band+'_band_data.Df'
+            polcal(vis = visPola, caltable = dtab, field=polLeakField,
+                   spw = str(spw_start)+'~'+str(spw_end-1)  , refant='ea10', poltype='Df', solint='inf,2MHz',
+                   combine='scan', gaintable = [kcross_mbd], gainfield=[''], spwmap=[len(bandSPW[b])*[2]], append=False)
 
-            plotms(vis = dtab, xaxis='freq', yaxis='amp', coloraxis='corr', antenna='ea01', plotfile=polLeakFields[pl]+'_'+band+'_band.ampvsfreq.Dfsolns.png', overwrite=True)
+        plotms(vis = dtab, xaxis='freq', yaxis='amp', coloraxis='corr', antenna='ea01', plotfile=polLeakField+'_'+band+'_band.ampvsfreq.Dfsolns.png', overwrite=True)
 
-            plotms(vis = dtab, xaxis='chan', yaxis='phase', coloraxis='corr', antenna='ea01', plotrange=[-1,-1,-180,180], plotfile=polLeakFields[pl]+'_'+band+'_band.phasevschan.Dfsolns.png', overwrite=True)
+        plotms(vis = dtab, xaxis='chan', yaxis='phase', coloraxis='corr', antenna='ea01', plotrange=[-1,-1,-180,180], plotfile=polLeakField+'_'+band+'_band.phasevschan.Dfsolns.png', overwrite=True)
 
 
 
-    task_logprint(f"QA2 score: {QA2_polcal}")
-    task_logprint("Finished EVLA_pipe_polcal_testing_v2.py")
-    time_list = runtiming("polcal", "end")
+task_logprint(f"QA2 score: {QA2_polcal}")
+task_logprint("Finished EVLA_pipe_polcal_testing_v2.py")
+time_list = runtiming("polcal", "end")
 
-    pipeline_save()
+pipeline_save()

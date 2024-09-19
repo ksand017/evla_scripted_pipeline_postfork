@@ -93,9 +93,10 @@ def run_pipeline(context=None):
     global mymodel
     global do_hanning
     global do_pol
-    SDM_name = "TDRW0001.sb35624494.eb35628826.58395.23719237269"
+    #SDM_name = "TDRW0001.sb35624494.eb35628826.58395.23719237269"
+    SDM_name = "TDRW0001.missingpolintents"
     mymodel = "y"
-    do_hanning = "y"
+    do_hanning = "n"
     do_pol = True
     print(SDM_name, mymodel, do_hanning, do_pol, context)
     if context is None:
