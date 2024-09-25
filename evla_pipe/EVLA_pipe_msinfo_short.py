@@ -118,6 +118,21 @@ try:
 finally:
     tb.close()
 
+
+# identify science targets
+try:
+    targ_index = np.where(intents == 'OBSERVE_TARGET#UNSPECIFIED')[0][0]
+    tb.open(msname)
+    subtable = tb.query('STATE_ID in %s ' % [targ_index])
+    targ_id = np.unique(subtable.getcol('FIELD_ID'))
+    science_targ_names = field_names[targ_id]
+    print('science targets in this MS = ', science_targ_names)
+finally:
+    tb.close()
+    
+
+
+
 # Figure out integration time used
 try:
     ms.open(msname)
@@ -293,7 +308,7 @@ for state_ID in range(len(intents)):
             temp_field_names = tb.getcol('NAME')
             polAngleField = temp_field_names[pol_angle_field_id][0]
             tb.close()
-            print('polAngleField = ', polAngleField)
+            #print('polAngleField = ', polAngleField)
             
             polarization_angle_state_IDs.append(state_ID)
             calibrator_state_IDs.append(state_ID)
@@ -464,6 +479,9 @@ if len(polarization_angle_state_IDs) == 0:
             #task_logprint('WARNING: None of the standard pol leakage calibrators are availble in the MS')
             task_logprint("Determining whether any phase calibrators have sufficient parallactic angle coverage to serve as polarization leakage calibrator (3 scans over 45 degrees)")
             for c in range(len(field_names)):
+                if field_names[c] in science_targ_names:
+                    task_logprint('Field '+str(field_names[c]) +' is a science target and cannot be used for calibration!')
+                    continue
                 try: #FIXME need to include check to skip science targets
                     parang = getpainfo(msname=msname, field=field_names[c])
                     scan_list = field_scans[c]

@@ -510,11 +510,13 @@ if do_pol == True:
                 use_parang = False
 
             if use_parang == True:
+                task_logprint('Using poltype = DfQU')
                 dtab = polLeakFields[pl]+'_'+band+'_band_data.DfQU'
                 polcal(vis = visPola, caltable = dtab, field=polLeakFields[pl],
                     spw = str(spw_start)+'~'+str(spw_end-1)  , refant='ea10', poltype='Df+QU', solint='inf,2MHz',
                     combine='scan', gaintable = [kcross_mbd], gainfield=[''], spwmap=[len(bandSPW[b])*[2]], append=False)
             else:
+                task_logprint('Using poltype = Df')
                 dtab = polLeakFields[pl]+'_'+band+'_band_data.Df'
                 polcal(vis = visPola, caltable = dtab, field=polLeakFields[pl],
                     spw = str(spw_start)+'~'+str(spw_end-1)  , refant='ea10', poltype='Df', solint='inf,2MHz',
