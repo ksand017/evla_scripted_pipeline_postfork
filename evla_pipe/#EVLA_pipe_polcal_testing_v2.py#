@@ -530,6 +530,8 @@ if do_pol == True:
             plotms(vis = dtab, xaxis='freq', yaxis='amp', coloraxis='corr', antenna='ea01', plotfile=polLeakFields[pl]+'_'+band+'_band.ampvsfreq.'+leak_polcal_type[pl]+'solns.png', overwrite=True)
 
             plotms(vis = dtab, xaxis='chan', yaxis='phase', coloraxis='corr', antenna='ea01', plotrange=[-1,-1,-180,180], plotfile=polLeakFields[pl]+'_'+band+'_band.phasevschan.'+leak_polcal_type[pl]+'solns.png', overwrite=True)
+            plotms(vis=dtab_J0259,xaxis='chan',yaxis='phase', 
+       iteraxis='antenna',coloraxis='corr',plotrange=[-1,-1,-180,180])
 
 
         xtab = polAngleField+"_"+band+"_band_data.Xf"

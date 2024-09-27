@@ -246,6 +246,9 @@ calibrator_state_IDs = []
 pointing_state_IDs = []
 
 phaseField = []
+
+leak_polcal_type = []
+
 for state_ID in range(len(intents)):
     state_intents = intents[state_ID].rsplit(",")
     for intent in range(len(state_intents)):
@@ -322,6 +325,7 @@ for state_ID in range(len(intents)):
             polLeakField = temp_field_names[pol_lkg_field_id][0]
             tb.close()
             print('polLeakField = ', polLeakField)
+            leak_polcal_type.append('DfQU')
             polarization_lkg_state_IDs.append(state_ID)
             calibrator_state_IDs.append(state_ID)            
         elif scan_intent == "CALIBRATE_AMPLI":
@@ -457,7 +461,6 @@ if len(polarization_angle_state_IDs) == 0:
         else:
             task_logprint("Searching for polarization leakage calibrators...")
             has_leak_polcal = False
-            leak_polcal_type = []
             for i in range(len(polcals_C)):
                 if polcals_C[i] in field_names:
                     if has_leak_polcal == False:

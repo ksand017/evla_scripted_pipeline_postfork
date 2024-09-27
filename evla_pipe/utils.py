@@ -1,3 +1,10 @@
+
+import numpy as np
+# NOTE `np` is aliased in `getBCalStatistics` so use `numpy` directly there.
+import numpy
+from scipy import *
+from numpy import *
+
 import os
 import copy
 import time
@@ -5,12 +12,6 @@ import math
 import urllib
 import datetime
 from pathlib import Path
-
-import numpy as np
-# NOTE `np` is aliased in `getBCalStatistics` so use `numpy` directly there.
-import numpy
-from scipy import *
-from numpy import *
 
 from casatasks import gaincal
 from casatools import ms as mstool
