@@ -19,6 +19,7 @@ from .utils import (
 tb = table()
 ms = mstool()
 
+flagging_threshold = 0.05
 
 def task_logprint(msg):
     logprint(msg, logfileout="logs/msinfo.log")

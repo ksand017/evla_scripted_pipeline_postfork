@@ -35,25 +35,44 @@ QA2_solint = "Pass"
 task_logprint("Splitting out calibrators into calibrators.ms")
 
 rmtables("calibrators.ms")
-split(
-    vis=ms_active,
-    outputvis="calibrators.ms",
-    datacolumn="corrected",
-    field="",
-    spw="",
-    width=int(max(channels)),
-    antenna="",
-    timebin="0s",
-    timerange="",
-    scan=calibrator_scan_select_string,
-    intent="",
-    array="",
-    uvrange="",
-    correlation="",
-    observation="",
-    keepflags=False,
-)
-
+try:
+    split(
+        vis=ms_active,
+        outputvis="calibrators.ms",
+        datacolumn="corrected",
+        field="",
+        spw="",
+        width=int(max(channels)),
+        antenna="",
+        timebin="0s",
+        timerange="",
+        scan=calibrator_scan_select_string,
+        intent="",
+        array="",
+        uvrange="",
+        correlation="",
+        observation="",
+        keepflags=False,
+    )
+except:
+    split(
+        vis=ms_active,
+        outputvis="calibrators.ms",
+        datacolumn="data",
+        field="",
+        spw="",
+        width=int(max(channels)),
+        antenna="",
+        timebin="0s",
+        timerange="",
+        scan=calibrator_scan_select_string,
+        intent="",
+        array="",
+        uvrange="",
+        correlation="",
+        observation="",
+        keepflags=False,
+    )
 ms.open("calibrators.ms")
 scan_summary = ms.getscansummary()
 durations = []

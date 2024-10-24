@@ -19,7 +19,13 @@ pi = np.pi
 
 def task_logprint(msg):
     logprint(msg, logfileout="logs/polcal.log")
-    
+
+def S(f,S,alpha,beta):
+    '''
+    Power law model given input alpha, beta, and frequency array
+    '''
+    return S*(f/3.0)**(alpha+beta*np.log10(f/3.0))
+
 def fitterI(freqI_band,a,b):
     '''
     fitterI fits flux I to the setjy equation, to get an alpha and beta
@@ -215,8 +221,8 @@ if do_pol == True:
         flagging=True,
     )
     RefAntOutput = findrefant.calculate()
-    refAnt = 'ea10'
-    #refAnt = str(RefAntOutput[0])
+    #refAnt = 'ea10' #casaguide chosen refant
+    refAnt = str(RefAntOutput[0])
 
     task_logprint(f"The pipeline will use antenna {refAnt} as the reference")
 
@@ -484,11 +490,11 @@ if do_pol == True:
             spix_str_a = file_spix_ndarray[1]
             spix_str_b = file_spix_ndarray[2]
             
-            #spix_flt_a = float(spix_str_a)
-            #spix_flt_b = float(spix_str_b)
+            spix_flt_a = float(spix_str_a)
+            spix_flt_b = float(spix_str_b)
             
-            spix_flt_a = 0.1707699344315621
-            spix_flt_b = -0.1668844662580119
+            #spix_flt_a = 0.1707699344315621
+            #spix_flt_b = -0.1668844662580119
             print('input spectral index = ', spix_flt_a, spix_flt_b)
             file_fd = np.genfromtxt(visPola.rstrip('_pola_cal.ms/')+'.fluxdensities.field'+polLeakFields[pl]+'.band'+band+'.txt', dtype=str)
             Table = []
@@ -505,11 +511,11 @@ if do_pol == True:
 
             print('reference frequency for setjy() = ', Freqs[freqs_i])
             print('Flux density = ', StokesI[freqs_i])
-            
+            popt, pcov = sp.optimize.curve_fit(S, Freqs, StokesI)
             setjy(vis=visPola, standard='manual', field=polLeakFields[pl], 
                                 spw=str(spw_start)+'~'+str(spw_end), scalebychan=True, listmodels=False,
                                 fluxdensity=[StokesI[freqs_i], 0, 0, 0],
-                                spix = [spix_flt_a, spix_flt_b],
+                                spix = [popt[1], popt[2]],
                                 reffreq=str(Freqs[freqs_i]*(1e9))+'Hz',
                                 usescratch=True,useephemdir=False,interpolation="nearest", ismms=False) #0.17077,-0.166884  spix_flt_a, spix_flt_b
             

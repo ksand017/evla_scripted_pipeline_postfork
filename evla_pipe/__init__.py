@@ -152,10 +152,10 @@ def run_pipeline(context=None):
 
         # Re-run semiFinalBPdcals following flagging with `rflag` above.
         exec_script("EVLA_pipe_semiFinalBPdcals1", context)
-
+        
         # Determine solution interval (solint) for scan-average equivalent.
         exec_script("EVLA_pipe_solint", context)
-
+        
         # Do test gain calibrations to establish short solution interval.
         exec_script("EVLA_pipe_testgains", context)
 
@@ -172,7 +172,7 @@ def run_pipeline(context=None):
         # Perform the flux density bootstrapping. This fits spectral index of
         # calibrators with a power-law and writes values into the model column.
         exec_script("EVLA_pipe_fluxboot", context)
-
+        
         # Make final calibration tables.
         exec_script("EVLA_pipe_finalcals", context)
 
