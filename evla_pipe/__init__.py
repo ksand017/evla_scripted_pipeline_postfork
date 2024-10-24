@@ -98,7 +98,7 @@ def run_pipeline(context=None):
     mymodel = "y"
     do_hanning = "n"
     do_pol = True
-    print(SDM_name, mymodel, do_hanning, do_pol, context)
+    print(SDM_name, mymodel, do_hanning, do_pol)
     if context is None:
         context = globals()
     try:
