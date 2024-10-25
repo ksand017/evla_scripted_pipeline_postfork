@@ -11,7 +11,7 @@ import numpy as np
 import scipy as sp
 import math
 
-from casatasks import gaincal, applycal, polcal, setjy, split, fluxscale, casalog, flagdata
+from casatasks import gaincal, applycal, polcal, setjy, split, fluxscale, casalog, flagdata, flagmanager
 from . import pipeline_save
 from .utils import runtiming, logprint, find_standards, find_EVLA_band, RefAntHeuristics, MAINLOG
 
@@ -230,7 +230,7 @@ if do_pol == True:
 
     # set the stokes I model for the polarization angle calibrator and plot results
     flux_dict = setjy(vis=visPola, field=polarization_angle_field_select_string)
-
+    
     plotms(vis=visPola,field=polAngleField,correlation='RR',
            timerange='',antenna='',
            xaxis='frequency',yaxis='amp',ydatacolumn='model', plotfile=str(polAngleField)+'_ampvsfreq_RR_model_postsetjy.png', overwrite=True)
@@ -356,13 +356,13 @@ if do_pol == True:
             continue
 
         
-        '''
+        
         ###FIXME: add step to determine the spws perbaseband within a band
-        tb.open(invis+'SPECTRAL_WINDOW/')
+        tb.open(band+'band.ms/SPECTRAL_WINDOW/')
         spw_names = tb.getcol('NAME')
+        print('spw_names = ', spw_names)
         bb_names = [spw_names[i].rsplit('#')[1] for i in range(len(spw_names))]
         unique_bb_names = np.unique(bb_names)
-        print(unique_bb_names)
         SPW_per_bb = []
         for i in range(len(unique_bb_names)):
             bb_name = unique_bb_names[i]
@@ -372,9 +372,9 @@ if do_pol == True:
                 if bb_name in spw_names[j]:
                     spws.append(spw_names[j].rsplit('#')[-1])
             SPW_per_bb.append(spws)
-        print(SPW_per_bb)
-
-        '''
+        tb.close()
+        print('SPW_per_bb = ', SPW_per_bb)
+        
         freqI_band = freqI[spw_start:spw_end+1]
         fluxI_band = fluxI[spw_start:spw_end+1]
 
@@ -464,22 +464,69 @@ if do_pol == True:
                 parang=True)
 
         plotms(vis=kcross_sbd, xaxis='frequency', yaxis='delay', antenna = refAnt, coloraxis='corr', plotfile=str(polAngleField)+'_delayvsfreq_kcross_sbd_sol.png', overwrite=True)
-
-
-        # Solving for the Cross Hand Multiband Delays
-        kcross_mbd = polAngleField+'_'+band+'_band_data.mbd.Kcross'
-        gaincal(vis=visPola, caltable=kcross_mbd, field=polAngleField,
-                spw=str(spw_start)+'~'+str(spw_end)+':'+str(lower)+'~'+str(upper),
-                gaintype='KCROSS',
-                solint='inf',
-                combine='scan,spw', 
-                refant=refAnt,
-                gaintable=[''],
-                gainfield=[''],
-                parang=True)
-
-        plotms(vis=kcross_mbd, xaxis='frequency', yaxis='delay', antenna = refAnt, coloraxis='corr', plotfile=str(polAngleField)+'_delayvsfreq_kcross_mbd_sol.png', overwrite=True)
         
+        tb.open(kcross_sbd)
+        delays = np.unique(tb.getcol('FPARAM'))
+        #delays = np.array([0.0, 2.0, 3.5, 5.5, 7.0, 10.3, 12.0])
+        tb.close()
+        print('delays = ', delays)
+        d_bool = delays > 10.0
+        d_bool_check = True in d_bool
+        use_mbd = False
+        if d_bool_check == True:
+            print('Delays > 10ns found! You may want to check data for RFI!') 
+            print('Flagging spws with delay >10ns and re-determining Kcross solutions using MBD. ')
+            flagmanager(vis = visPola, mode='save', versionname='pre_kcross_mbd_flagging')
+            bad_spw = np.where(d_bool)[0]
+            spw_flag_str = str(bad_spw[0])
+            for i in range(1,len(bad_spw)):
+                spw_flag_str += ','+str(bad_spw[i])
+            use_mbd = True
+            flagdata(vis=visPola, mode='manual', spw=spw_flag_str)
+        
+        else:
+            print('No delays > 10ns found!')
+        if use_mbd == True:
+            # Solving for the Cross Hand Multiband Delays
+            for k in range(len(SPW_per_bb)):
+                spw_in_bb = SPW_per_bb[k]
+                kcross_mbd = polAngleField+'_'+band+'_band_data.mbd.Kcross'
+                if k==0:
+                    apen_mode = False
+                else:
+                    apen_mode = True
+                try:
+                    gaincal(vis=visPola, caltable=kcross_mbd, field=polAngleField,
+                            spw=str(spw_in_bb[0])+'~'+str(spw_in_bb[-1])+':'+str(lower)+'~'+str(upper),
+                            gaintype='KCROSS',
+                            solint='inf',
+                            combine='scan,spw', 
+                            refant=refAnt,
+                            gaintable=[''],
+                            gainfield=[''],
+                            parang=True, 
+                            append=apen_mode)
+                except:
+                    str2prnt = str(float(spw_in_bb[0])-float(spw_in_bb[0]))+'~'+str(float(spw_in_bb[-1])-float(spw_in_bb[0]))+':'+str(lower)+'~'+str(upper)
+                    print(str2prnt)
+                    gaincal(vis=visPola, caltable=kcross_mbd, field=polAngleField,
+                        spw=str(float(spw_in_bb[0])-float(spw_in_bb[0]))+'~'+str(float(spw_in_bb[-1])-float(spw_in_bb[0]))+':'+str(lower)+'~'+str(upper),
+                        gaintype='KCROSS',
+                        solint='inf',
+                        combine='scan,spw', 
+                        refant=refAnt,
+                        gaintable=[''],
+                        gainfield=[''],
+                        parang=True, 
+                        append=apen_mode)                   
+
+            plotms(vis=kcross_mbd, xaxis='frequency', yaxis='delay', antenna = refAnt, coloraxis='corr', plotfile=str(polAngleField)+'_delayvsfreq_kcross_mbd_sol.png', overwrite=True)
+            flagmanager(vis=visPola, mode='restore', versionname='pre_kcross_mbd_flagging')
+            kcross_tab = kcross_mbd
+            # kcross_spw_map = 
+        else:
+            kcross_tab = kcross_sbd
+            
         polLeakFields = polLeakField.rsplit(',')
         print('polLeakField = ', polLeakFields, polLeakFields[0])
         for pl in range(len(leak_polcal_type)):
@@ -512,12 +559,13 @@ if do_pol == True:
             print('reference frequency for setjy() = ', Freqs[freqs_i])
             print('Flux density = ', StokesI[freqs_i])
             popt, pcov = sp.optimize.curve_fit(S, Freqs, StokesI)
+            print('input spectral index = ', popt[1], popt[2])
             setjy(vis=visPola, standard='manual', field=polLeakFields[pl], 
                                 spw=str(spw_start)+'~'+str(spw_end), scalebychan=True, listmodels=False,
                                 fluxdensity=[StokesI[freqs_i], 0, 0, 0],
                                 spix = [popt[1], popt[2]],
                                 reffreq=str(Freqs[freqs_i]*(1e9))+'Hz',
-                                usescratch=True,useephemdir=False,interpolation="nearest", ismms=False) #0.17077,-0.166884  spix_flt_a, spix_flt_b
+                                usescratch=True,useephemdir=False,interpolation="nearest", ismms=False) 
             
             plotms(vis=visPola,field=polLeakFields[pl],correlation='RR',
             timerange='',antenna='ea01&ea02',
@@ -535,15 +583,14 @@ if do_pol == True:
                 dtab = polLeakFields[pl]+'_'+band+'_band_data.DfQU'
                 polcal(vis = visPola, caltable = dtab, field=polLeakFields[pl], 
                        spw = str(spw_start)+'~'+str(spw_end)  , refant=refAnt, poltype='Df+QU', solint='inf,2MHz',
-                       combine='scan', gaintable = [kcross_mbd], gainfield=[''], spwmap=[len(bandSPW[b])*[spw_start]], append=False) #
+                       combine='scan', gaintable = [kcross_tab], gainfield=[''], spwmap=[len(bandSPW[b])*[spw_start]], append=False) #
                     
-                #len(bandSPW[b])*[2]
             else:
                 task_logprint('Using poltype = Df')
                 dtab = polLeakFields[pl]+'_'+band+'_band_data.Df'
                 polcal(vis = visPola, caltable = dtab, field=polLeakFields[pl],
                     spw = str(spw_start)+'~'+str(spw_end)  , refant=refAnt, poltype='Df', solint='inf,2MHz',
-                    combine='scan', gaintable = [kcross_mbd], gainfield=[''], spwmap=[len(bandSPW[b])*[spw_start]], append=False)
+                    combine='scan', gaintable = [kcross_tab], gainfield=[''], spwmap=[len(bandSPW[b])*[spw_start]], append=False)
 
             plotms(vis = dtab, xaxis='freq', yaxis='amp', coloraxis='corr', antenna='ea01', plotfile=polLeakFields[pl]+'_'+band+'_band.ampvsfreq.'+leak_polcal_type[pl]+'solns.png', overwrite=True)
 
