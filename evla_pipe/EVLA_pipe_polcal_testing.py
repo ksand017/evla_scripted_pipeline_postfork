@@ -480,7 +480,7 @@ if do_pol == True:
         task_logprint('delays = %s' % delays)
         d_bool = delays > 10.0
         d_bool_check = True in d_bool
-        use_mbd = True
+        use_mbd = False
         flagmanager(vis = visPola, mode='save', versionname='pre_kcross_mbd_flagging')
         # flagmanager(vis = visPola, mode='save', versionname='pre_kcross_mbd_flagging')
         if d_bool_check == True:
@@ -495,8 +495,6 @@ if do_pol == True:
         
         else:
             print('No delays > 10ns found!')
-            print('use_mbd = ', use_mbd)
-        if use_mbd == True:
             task_logprint('Checking Flagging statistics of SPWs...')
             bad_spw = []
             s = flagdata(vis=visPola, mode='summary')
@@ -513,10 +511,14 @@ if do_pol == True:
                             spw_flag_str += ','+str(bad_spw[l])
                     print('spw_flag_str = ', spw_flag_str)
                     flagdata(vis=visPola, mode='manual', spw=spw_flag_str)
-
-
-
+                    use_mbd = True
+            print('use_mbd = ', use_mbd)
+        if use_mbd == True:
             # Solving for the Cross Hand Multiband Delays
+            # FIXME: There is probably a better way to handle this...
+            # first attempt assumes setup spws are still included in MS and science
+            # spw indexing does not start at 0
+            # second attemp assumes the science spw indexing starts at 0
             for k in range(len(SPW_per_bb)):
                 spw_in_bb = SPW_per_bb[k]
                 kcross_mbd = polAngleField+'_'+band+'_band_data.mbd.Kcross'
