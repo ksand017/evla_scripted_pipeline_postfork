@@ -22,9 +22,10 @@ def task_logprint(msg):
 
 def S(f,S,alpha,beta):
     '''
-    Power law model given input alpha, beta, and frequency array
+    Power law model given input alpha, beta, and frequency array. 
+    refFreqI is a globally defined variable (GHz)
     '''
-    return S*(f/3.0)**(alpha+beta*np.log10(f/3.0))
+    return S*(f/reffreq)**(alpha+beta*np.log10(f/reffreq))
 
 def fitterI(freqI_band,a,b):
     '''
@@ -173,6 +174,7 @@ START OF POLCAL SCRIPT
 task_logprint("*** Starting EVLA_pipe_polcal_testing_v2.py ***")
 time_list = runtiming("polcal", "start")
 QA2_polcal = "Pass"
+spw_flg_thresh = 0.30
 
 print('leak_polcal_type', leak_polcal_type)
 
@@ -374,6 +376,12 @@ if do_pol == True:
             SPW_per_bb.append(spws)
         tb.close()
         print('SPW_per_bb = ', SPW_per_bb)
+        kcross_spw_map_temp = []
+        for i in range(len(SPW_per_bb)):
+                print(i, len(SPW_per_bb[i]))
+                spws = SPW_per_bb[i]
+                kcross_spw_map_temp = np.append(kcross_spw_map_temp, len(spws)*[int(spws[0])-int(SPW_per_bb[0][0])])
+        print('kcross_spw_map = ', kcross_spw_map_temp)
         
         freqI_band = freqI[spw_start:spw_end+1]
         fluxI_band = fluxI[spw_start:spw_end+1]
@@ -450,7 +458,7 @@ if do_pol == True:
         plotms(vis=visPola,field=polAngleField,correlation='RL',
                timerange='',antenna='',
                xaxis='frequency',yaxis='phase',ydatacolumn='model', plotfile=str(polAngleField)+'_phasevsfreq_RL_polarizedmodel.png', overwrite=True)
-
+            
         # Solving for the Cross Hand Single Band Delays
         kcross_sbd = polAngleField+'_'+band+'_band_data.sbd.Kcross'
         gaincal(vis=visPola, caltable=kcross_sbd, field=polAngleField,
@@ -469,10 +477,11 @@ if do_pol == True:
         delays = np.unique(tb.getcol('FPARAM'))
         #delays = np.array([0.0, 2.0, 3.5, 5.5, 7.0, 10.3, 12.0])
         tb.close()
-        print('delays = ', delays)
+        task_logprint('delays = %s' % delays)
         d_bool = delays > 10.0
         d_bool_check = True in d_bool
         use_mbd = False
+        flagmanager(vis = visPola, mode='save', versionname='pre_kcross_mbd_flagging')
         if d_bool_check == True:
             print('Delays > 10ns found! You may want to check data for RFI!') 
             print('Flagging spws with delay >10ns and re-determining Kcross solutions using MBD. ')
@@ -487,6 +496,25 @@ if do_pol == True:
         else:
             print('No delays > 10ns found!')
         if use_mbd == True:
+            task_logprint('Checking Flagging statistics of SPWs...')
+            bad_spw = []
+            s = flagdata(vis=visPola, mode='summary')
+            for l in range(len(s['spw'])):
+                    flg_frac = s['spw'][str(l)]['flagged']/s['spw'][str(l)]['total']
+                    print(str(l), flg_frac)
+                    if flg_frac > spw_flg_thresh:
+                            print('flagging fraction for spw '+ str(l)+ ' is > %s' % str(spw_flg_thresh*100.0))
+                            print('Removing this spw from kcross calculation.')
+                            bad_spw.append(str(l))
+            if bad_spw !=[]:
+                    spw_flag_str = str(bad_spw[0])
+                    for l in range(1,len(bad_spw)):
+                            spw_flag_str += ','+str(bad_spw[l])
+                    print('spw_flag_str = ', spw_flag_str)
+                    flagdata(vis=visPola, mode='manual', spw=spw_flag_str)
+
+
+
             # Solving for the Cross Hand Multiband Delays
             for k in range(len(SPW_per_bb)):
                 spw_in_bb = SPW_per_bb[k]
@@ -522,9 +550,10 @@ if do_pol == True:
 
             plotms(vis=kcross_mbd, xaxis='frequency', yaxis='delay', antenna = refAnt, coloraxis='corr', plotfile=str(polAngleField)+'_delayvsfreq_kcross_mbd_sol.png', overwrite=True)
             flagmanager(vis=visPola, mode='restore', versionname='pre_kcross_mbd_flagging')
+            kcross_spw_map = kcross_spw_map_temp
             kcross_tab = kcross_mbd
-            # kcross_spw_map = 
         else:
+            kcross_spw_map = []
             kcross_tab = kcross_sbd
             
         polLeakFields = polLeakField.rsplit(',')
@@ -583,14 +612,14 @@ if do_pol == True:
                 dtab = polLeakFields[pl]+'_'+band+'_band_data.DfQU'
                 polcal(vis = visPola, caltable = dtab, field=polLeakFields[pl], 
                        spw = str(spw_start)+'~'+str(spw_end)  , refant=refAnt, poltype='Df+QU', solint='inf,2MHz',
-                       combine='scan', gaintable = [kcross_tab], gainfield=[''], spwmap=[len(bandSPW[b])*[spw_start]], append=False) #
+                       combine='scan', gaintable = [kcross_tab], gainfield=[''], spwmap=kcross_spw_map, append=False) #
                     
             else:
                 task_logprint('Using poltype = Df')
                 dtab = polLeakFields[pl]+'_'+band+'_band_data.Df'
                 polcal(vis = visPola, caltable = dtab, field=polLeakFields[pl],
                     spw = str(spw_start)+'~'+str(spw_end)  , refant=refAnt, poltype='Df', solint='inf,2MHz',
-                    combine='scan', gaintable = [kcross_tab], gainfield=[''], spwmap=[len(bandSPW[b])*[spw_start]], append=False)
+                    combine='scan', gaintable = [kcross_tab], gainfield=[''], spwmap=kcross_spw_map, append=False) #len(bandSPW[b])*[spw_start]]
 
             plotms(vis = dtab, xaxis='freq', yaxis='amp', coloraxis='corr', antenna='ea01', plotfile=polLeakFields[pl]+'_'+band+'_band.ampvsfreq.'+leak_polcal_type[pl]+'solns.png', overwrite=True)
 
@@ -606,9 +635,9 @@ if do_pol == True:
                combine='scan',
                poltype='Xf',
                refant = refAnt,
-               gaintable=[kcross_mbd,dtab],
+               gaintable=[kcross_tab,dtab],
                gainfield=['',''],
-               spwmap=[len(bandSPW[b])*[spw_start],[]],
+               spwmap=[kcross_spw_map,[]],
                append=False)
         
         plotms(vis=xtab,xaxis='frequency',yaxis='phase',coloraxis='spw', plotfile=str(polAngleField)+'_phasevsfreq_Xf_sol.png', overwrite=True)
