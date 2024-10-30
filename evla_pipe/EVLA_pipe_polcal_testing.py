@@ -16,6 +16,11 @@ from . import pipeline_save
 from .utils import runtiming, logprint, find_standards, find_EVLA_band, RefAntHeuristics, MAINLOG
 
 pi = np.pi
+def calc_rms(spec):
+    '''
+    calculates the rms of an input array
+    '''
+    return np.sqrt(np.nanmean(spec**2))
 
 def task_logprint(msg):
     logprint(msg, logfileout="logs/polcal.log")
@@ -472,17 +477,35 @@ if do_pol == True:
                 parang=True)
 
         plotms(vis=kcross_sbd, xaxis='frequency', yaxis='delay', antenna = refAnt, coloraxis='corr', plotfile=str(polAngleField)+'_delayvsfreq_kcross_sbd_sol.png', overwrite=True)
-        
+        task_logprint('Checking delay values and rms...')
+        use_mbd = False
         tb.open(kcross_sbd)
-        delays = np.unique(tb.getcol('FPARAM'))
+        delays_all = tb.getcol('FPARAM')[0][0]
+        delays = np.array([x for i, x in enumerate(delays_all) if x not in delays_all[:i]])
         #delays = np.array([0.0, 2.0, 3.5, 5.5, 7.0, 10.3, 12.0])
         tb.close()
         task_logprint('delays = %s' % delays)
+
+        for i in range(len(SPW_per_bb)):
+            spws = SPW_per_bb[i]
+            #print('spws = ', spws)
+            if SPW_per_bb[0][0] == '0':
+                task_logprint('SPW indexing starts at 0')
+                spws = [int(spws[j]) for j in range(len(spws))]
+            else:
+                spws = [int(spws[j])-int(SPW_per_bb[0][0]) for j in range(len(spws))]
+            task_logprint('delays per bb = %s' % delays[spws])
+            bb_rms = calc_rms(delays[spws])
+            task_logprint('rms across baseband = %s' % bb_rms)
+            if bb_rms > 3.0:
+                task_logprint('RMS of sbd solutions for this baseband > 3.0 ns...')
+                task_logprint('Doing mbd kcross solutions instead...')
+                use_mbd = True
+        
         d_bool = delays > 10.0
         d_bool_check = True in d_bool
-        use_mbd = False
         flagmanager(vis = visPola, mode='save', versionname='pre_kcross_mbd_flagging')
-        # flagmanager(vis = visPola, mode='save', versionname='pre_kcross_mbd_flagging')
+        
         if d_bool_check == True:
             print('Delays > 10ns found! You may want to check data for RFI!') 
             print('Flagging spws with delay >10ns and re-determining Kcross solutions using MBD. ')
@@ -495,24 +518,24 @@ if do_pol == True:
         
         else:
             print('No delays > 10ns found!')
-            task_logprint('Checking Flagging statistics of SPWs...')
-            bad_spw = []
-            s = flagdata(vis=visPola, mode='summary')
-            for l in range(len(s['spw'])):
-                    flg_frac = s['spw'][str(l)]['flagged']/s['spw'][str(l)]['total']
-                    print(str(l), flg_frac)
-                    if flg_frac > spw_flg_thresh:
-                            print('flagging fraction for spw '+ str(l)+ ' is > %s' % str(spw_flg_thresh*100.0))
-                            print('Removing this spw from kcross calculation.')
-                            bad_spw.append(str(l))
-            if bad_spw !=[]:
-                    spw_flag_str = str(bad_spw[0])
-                    for l in range(1,len(bad_spw)):
-                            spw_flag_str += ','+str(bad_spw[l])
-                    print('spw_flag_str = ', spw_flag_str)
-                    flagdata(vis=visPola, mode='manual', spw=spw_flag_str)
-                    use_mbd = True
-            print('use_mbd = ', use_mbd)
+        task_logprint('Checking Flagging statistics of SPWs...')
+        bad_spw = []
+        s = flagdata(vis=visPola, mode='summary')
+        for l in range(len(s['spw'])):
+            flg_frac = s['spw'][str(l)]['flagged']/s['spw'][str(l)]['total']
+            print(str(l), flg_frac)
+            if flg_frac > spw_flg_thresh:
+                print('flagging fraction for spw '+ str(l)+ ' is > %s' % str(spw_flg_thresh*100.0))
+                print('Removing this spw from kcross calculation.')
+                bad_spw.append(str(l))
+        if bad_spw !=[]:
+            spw_flag_str = str(bad_spw[0])
+            for l in range(1,len(bad_spw)):
+                spw_flag_str += ','+str(bad_spw[l])
+            print('spw_flag_str = ', spw_flag_str)
+            flagdata(vis=visPola, mode='manual', spw=spw_flag_str)
+            use_mbd = True
+        print('use_mbd = ', use_mbd)
         if use_mbd == True:
             # Solving for the Cross Hand Multiband Delays
             # FIXME: There is probably a better way to handle this...
@@ -538,10 +561,10 @@ if do_pol == True:
                             parang=True, 
                             append=apen_mode)
                 except:
-                    str2prnt = str(float(spw_in_bb[0])-float(spw_in_bb[0]))+'~'+str(float(spw_in_bb[-1])-float(spw_in_bb[0]))+':'+str(lower)+'~'+str(upper)
+                    str2prnt = str(int(spw_in_bb[0])-int(spw_in_bb[0]))+'~'+str(int(spw_in_bb[-1])-int(spw_in_bb[0]))+':'+str(lower)+'~'+str(upper)
                     print(str2prnt)
                     gaincal(vis=visPola, caltable=kcross_mbd, field=polAngleField,
-                        spw=str(float(spw_in_bb[0])-float(spw_in_bb[0]))+'~'+str(float(spw_in_bb[-1])-float(spw_in_bb[0]))+':'+str(lower)+'~'+str(upper),
+                        spw=str(int(spw_in_bb[0])-int(spw_in_bb[0]))+'~'+str(int(spw_in_bb[-1])-int(spw_in_bb[0]))+':'+str(lower)+'~'+str(upper),
                         gaintype='KCROSS',
                         solint='inf',
                         combine='scan,spw', 
@@ -644,7 +667,7 @@ if do_pol == True:
                append=False)
         
         plotms(vis=xtab,xaxis='frequency',yaxis='phase',coloraxis='spw', plotfile=str(polAngleField)+'_phasevsfreq_Xf_sol.png', overwrite=True)
-        
+        task_logprint('Applying polarization calibration solution tables to %s' % visPola)
         applycal(vis = visPola,
                  field='',
                  gainfield=['', '', ''], 
