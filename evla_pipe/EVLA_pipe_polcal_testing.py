@@ -10,12 +10,18 @@ by intents or scans
 import numpy as np
 import scipy as sp
 import math
+from scipy.interpolate import interp1d
+import matplotlib.pyplot as plt
 
-from casatasks import gaincal, applycal, polcal, setjy, split, fluxscale, casalog, flagdata, flagmanager
+from casatasks import gaincal, applycal, polcal, setjy, split, fluxscale, casalog, flagdata, flagmanager, tclean, widebandpbcor, imsubimage, imhead
 from . import pipeline_save
 from .utils import runtiming, logprint, find_standards, find_EVLA_band, RefAntHeuristics, MAINLOG
 
+from casatools import image
+
 pi = np.pi
+ia = image()
+
 def calc_rms(spec):
     '''
     calculates the rms of an input array
@@ -87,7 +93,7 @@ def polyFit(polAngleSource, band, refFreq):
 
     # RM and X_0 values come from Table 4. RM Values for the Four Sources
     # (also from 2013 Perley, Butler paper)
-    cal_data2013 = np.genfromtxt('/lustre/aoc/students/ksanders/EVLA_SCRIPTED_PIPELINE/EVLA_Scripted_Pipeline/EVLA_SCRIPTED_PIPELINE/data/PolCals_2013_3C48.3C138.3C147.3C286.dat')
+    cal_data2013 = np.genfromtxt('/lustre/aoc/students/ksanders/EVLA_SCRIPTED_PIPELINE/EVLA_SP_postfork/evla_scripted_pipeline_postfork/data/PolCals_2013_3C48.3C138.3C147.3C286.dat')
 
     freqFitting = cal_data2013[:,0]
     print('3C48' in polAngleSource)
@@ -179,7 +185,7 @@ START OF POLCAL SCRIPT
 task_logprint("*** Starting EVLA_pipe_polcal_testing_v2.py ***")
 time_list = runtiming("polcal", "start")
 QA2_polcal = "Pass"
-spw_flg_thresh = 0.30
+spw_flg_thresh = 0.50
 
 print('leak_polcal_type', leak_polcal_type)
 
@@ -259,37 +265,38 @@ if do_pol == True:
 
 
     task_logprint("reference_frequencies = %s" % reference_frequencies)
+    try:
+        tb.open(visPola+'SPECTRAL_WINDOW')
+        freqI = tb.getcol('REF_FREQUENCY')
+        spwNum = freqI.shape[0]
+        task_logprint("spwNum currently using = "+str(spwNum)+"\n")
 
-    tb.open(visPola+'SPECTRAL_WINDOW')
-    freqI = tb.getcol('REF_FREQUENCY')
-    spwNum = freqI.shape[0]
-    task_logprint("spwNum currently using = "+str(spwNum)+"\n")
-
-    # this is the number of channels, so below is also some math to 
-    # determine which ones want to include for input
-    task_logprint("Please note that assuming this is a continuum scan, so assuming that "
+        # this is the number of channels, so below is also some math to 
+        # determine which ones want to include for input
+        task_logprint("Please note that assuming this is a continuum scan, so assuming that "
                   "all spectral windows have same number of channels\n")
-    chanNum = tb.getcol('CHAN_FREQ').shape[0]
-    val = 0.1*chanNum
-    upper = int(math.ceil(chanNum - val))
-    lower = int(val)
-    task_logprint("channels are "+str(chanNum))
-    task_logprint("upper = "+str(upper))
-    task_logprint("lower = "+str(lower))
+        chanNum = tb.getcol('CHAN_FREQ').shape[0]
+        val = 0.1*chanNum
+        upper = int(math.ceil(chanNum - val))
+        lower = int(val)
+        task_logprint("channels are "+str(chanNum))
+        task_logprint("upper = "+str(upper))
+        task_logprint("lower = "+str(lower))
     
-    bandsList = unique_bands_string
-    print("bands are: ", bandsList, "\n")
+        bandsList = unique_bands_string
+        print("bands are: ", bandsList, "\n")
 
-    spwL = 0
-    spwS = 0
-    spwC = 0
-    spwX = 0
-    spwKu = 0
-    spwK = 0
-    spwKa = 0
-    spwQ = 0
-    bandList = tb.getcol('NAME')
-    tb.close()
+        spwL = 0
+        spwS = 0
+        spwC = 0
+        spwX = 0
+        spwKu = 0
+        spwK = 0
+        spwKa = 0
+        spwQ = 0
+        bandList = tb.getcol('NAME')
+    finally:
+        tb.close()
     # first determine what frequency bands are in the .ms
     bands = set()
     for i in range(len(bandList)):
@@ -355,9 +362,11 @@ if do_pol == True:
         spw_end = bandSPW[b][-1]
 
         task_logprint("Attempting to calibrate band: "+band+"\n")
-        tb.open(band+'band.ms/')
-        unique_scan_nums = np.unique(tb.getcol('SCAN_NUMBER'))
-        tb.close()
+        try:
+            tb.open(band+'band.ms/')
+            unique_scan_nums = np.unique(tb.getcol('SCAN_NUMBER'))
+        finally:
+            tb.close()
         if len(unique_scan_nums) <= 3:
             task_logprint('This band does not have enough scans to calibrate!')
             continue
@@ -365,21 +374,23 @@ if do_pol == True:
         
         
         ###FIXME: add step to determine the spws perbaseband within a band
-        tb.open(band+'band.ms/SPECTRAL_WINDOW/')
-        spw_names = tb.getcol('NAME')
-        print('spw_names = ', spw_names)
-        bb_names = [spw_names[i].rsplit('#')[1] for i in range(len(spw_names))]
-        unique_bb_names = np.unique(bb_names)
-        SPW_per_bb = []
-        for i in range(len(unique_bb_names)):
-            bb_name = unique_bb_names[i]
-            print(bb_name)
-            spws = []
-            for j in range(len(spw_names)):
-                if bb_name in spw_names[j]:
-                    spws.append(spw_names[j].rsplit('#')[-1])
-            SPW_per_bb.append(spws)
-        tb.close()
+        try:
+            tb.open(band+'band.ms/SPECTRAL_WINDOW/')
+            spw_names = tb.getcol('NAME')
+            print('spw_names = ', spw_names)
+            bb_names = [spw_names[i].rsplit('#')[1] for i in range(len(spw_names))]
+            unique_bb_names = np.unique(bb_names)
+            SPW_per_bb = []
+            for i in range(len(unique_bb_names)):
+                bb_name = unique_bb_names[i]
+                print(bb_name)
+                spws = []
+                for j in range(len(spw_names)):
+                    if bb_name in spw_names[j]:
+                        spws.append(spw_names[j].rsplit('#')[-1])
+                SPW_per_bb.append(spws)
+        finally:
+            tb.close()
         print('SPW_per_bb = ', SPW_per_bb)
         kcross_spw_map_temp = []
         for i in range(len(SPW_per_bb)):
@@ -479,12 +490,17 @@ if do_pol == True:
         plotms(vis=kcross_sbd, xaxis='frequency', yaxis='delay', antenna = refAnt, coloraxis='corr', plotfile=str(polAngleField)+'_delayvsfreq_kcross_sbd_sol.png', overwrite=True)
         task_logprint('Checking delay values and rms...')
         use_mbd = False
-        tb.open(kcross_sbd)
-        delays_all = tb.getcol('FPARAM')[0][0]
-        delays = np.array([x for i, x in enumerate(delays_all) if x not in delays_all[:i]])
-        #delays = np.array([0.0, 2.0, 3.5, 5.5, 7.0, 10.3, 12.0])
-        tb.close()
-        task_logprint('delays = %s' % delays)
+        try:
+            tb.open(kcross_sbd)
+            delays_all = tb.getcol('FPARAM')[0][0]
+            delays = np.array([x for i, x in enumerate(delays_all) if x not in delays_all[:i]])
+            #delays = np.array([0.0, 2.0, 3.5, 5.5, 7.0, 10.3, 12.0])
+            task_logprint('delays = %s' % delays)
+            print(np.unique(delays_all))
+            print(delays_all)
+        finally:
+            tb.close()
+        
 
         for i in range(len(SPW_per_bb)):
             spws = SPW_per_bb[i]
@@ -507,8 +523,8 @@ if do_pol == True:
         flagmanager(vis = visPola, mode='save', versionname='pre_kcross_mbd_flagging')
         
         if d_bool_check == True:
-            print('Delays > 10ns found! You may want to check data for RFI!') 
-            print('Flagging spws with delay >10ns and re-determining Kcross solutions using MBD. ')
+            task_logprint('Delays > 10ns found! You may want to check data for RFI!') 
+            task_logprint('Flagging spws with delay >10ns and re-determining Kcross solutions using MBD. ')
             bad_spw = np.where(d_bool)[0]
             spw_flag_str = str(bad_spw[0])
             for i in range(1,len(bad_spw)):
@@ -517,25 +533,25 @@ if do_pol == True:
             flagdata(vis=visPola, mode='manual', spw=spw_flag_str)
         
         else:
-            print('No delays > 10ns found!')
+            task_logprint('No delays > 10ns found!')
         task_logprint('Checking Flagging statistics of SPWs...')
         bad_spw = []
         s = flagdata(vis=visPola, mode='summary')
         for l in range(len(s['spw'])):
             flg_frac = s['spw'][str(l)]['flagged']/s['spw'][str(l)]['total']
-            print(str(l), flg_frac)
+            #print(str(l), flg_frac)
             if flg_frac > spw_flg_thresh:
-                print('flagging fraction for spw '+ str(l)+ ' is > %s' % str(spw_flg_thresh*100.0))
-                print('Removing this spw from kcross calculation.')
+                task_logprint('flagging fraction for spw '+ str(l)+ ' is > %s' % str(spw_flg_thresh*100.0))
+                task_logprint('Removing this spw from kcross calculation.')
                 bad_spw.append(str(l))
         if bad_spw !=[]:
             spw_flag_str = str(bad_spw[0])
             for l in range(1,len(bad_spw)):
                 spw_flag_str += ','+str(bad_spw[l])
-            print('spw_flag_str = ', spw_flag_str)
+            #print('spw_flag_str = ', spw_flag_str)
             flagdata(vis=visPola, mode='manual', spw=spw_flag_str)
             use_mbd = True
-        print('use_mbd = ', use_mbd)
+        #print('use_mbd = ', use_mbd)
         if use_mbd == True:
             # Solving for the Cross Hand Multiband Delays
             # FIXME: There is probably a better way to handle this...
@@ -561,8 +577,8 @@ if do_pol == True:
                             parang=True, 
                             append=apen_mode)
                 except:
-                    str2prnt = str(int(spw_in_bb[0])-int(spw_in_bb[0]))+'~'+str(int(spw_in_bb[-1])-int(spw_in_bb[0]))+':'+str(lower)+'~'+str(upper)
-                    print(str2prnt)
+                    #str2prnt = str(int(spw_in_bb[0])-int(spw_in_bb[0]))+'~'+str(int(spw_in_bb[-1])-int(spw_in_bb[0]))+':'+str(lower)+'~'+str(upper)
+                    #print(str2prnt)
                     gaincal(vis=visPola, caltable=kcross_mbd, field=polAngleField,
                         spw=str(int(spw_in_bb[0])-int(spw_in_bb[0]))+'~'+str(int(spw_in_bb[-1])-int(spw_in_bb[0]))+':'+str(lower)+'~'+str(upper),
                         gaintype='KCROSS',
@@ -597,7 +613,7 @@ if do_pol == True:
             
             #spix_flt_a = 0.1707699344315621
             #spix_flt_b = -0.1668844662580119
-            print('input spectral index = ', spix_flt_a, spix_flt_b)
+            #task_logprint('input spectral index = ', spix_flt_a, spix_flt_b)
             file_fd = np.genfromtxt(visPola.rstrip('_pola_cal.ms/')+'.fluxdensities.field'+polLeakFields[pl]+'.band'+band+'.txt', dtype=str)
             Table = []
             Freqs = []
@@ -611,10 +627,10 @@ if do_pol == True:
             reffreq = refFreqI/(1e9)
             freqs_i = np.where(abs(Freqs-reffreq)==min(abs(Freqs-reffreq)))[0][0]
 
-            print('reference frequency for setjy() = ', Freqs[freqs_i])
-            print('Flux density = ', StokesI[freqs_i])
+            task_logprint('reference frequency for setjy() = %s' % Freqs[freqs_i])
+            task_logprint('Flux density = %s ' % StokesI[freqs_i])
             popt, pcov = sp.optimize.curve_fit(S, Freqs, StokesI)
-            print('input spectral index = ', popt[1], popt[2])
+            task_logprint('input spectral index = %s ' % str(popt[1])+' , '+str(popt[2]))
             setjy(vis=visPola, standard='manual', field=polLeakFields[pl], 
                                 spw=str(spw_start)+'~'+str(spw_end), scalebychan=True, listmodels=False,
                                 fluxdensity=[StokesI[freqs_i], 0, 0, 0],
@@ -626,8 +642,8 @@ if do_pol == True:
             timerange='',antenna='ea01&ea02',
             xaxis='frequency',yaxis='amp',ydatacolumn='model', plotfile='polLeak'+polLeakFields[pl]+'_aftersetjy_visPola.png', overwrite=True)
             
-            print('len(bandSPW[b]) = ',len(bandSPW[b]))
-            print('leak_polcal_type[pl] = ', leak_polcal_type[pl])
+            #print('len(bandSPW[b]) = ',len(bandSPW[b]))
+            #print('leak_polcal_type[pl] = ', leak_polcal_type[pl])
             if leak_polcal_type[pl] == 'DfQU':
                 use_parang = True
             else:
@@ -707,6 +723,238 @@ if do_pol == True:
                    plotrange=[-1,-1,-180,180],coloraxis='corr',
                    plotfile='plotms_'+str(polLeakFields[i])+'-corrected-phase.png')
 
+            
+        # Image calibrator in full stokes spectral cube at each spw, measure polangle and pol frac
+        # across spws and compare with input model:
+        # spws_imaging = np.arange(spw_start, spw_end)
+        # im_name = polAngleField+'_StokesCubeIm'
+
+    rms_im = 15e-6
+
+    imniter=20000
+    ns_thresh = 4.0
+    sidelobethresh = [5.5]
+    mnbmfrc = [0.3]
+    lwnsthresh = [1.5]
+
+    ### Find max baseline length
+    # Load your measurement set
+    try:
+        tb.open(visPola+'ANTENNA')
+
+        # Get antenna positions
+        positions = tb.getcol('POSITION')
+    finally:
+        tb.close()
+
+    # Calculate distances between all pairs of antennas
+    num_antennas = positions.shape[1]
+    max_baseline = 0.0
+
+    #determine max baseline length
+    for i in range(num_antennas):
+        for j in range(i + 1, num_antennas):
+            # Calculate the baseline length
+            baseline_length = np.linalg.norm(positions[:, i] - positions[:, j])
+            if baseline_length > max_baseline:
+                max_baseline = baseline_length
+
+    print(f'Maximum Baseline Length: {max_baseline} meters')
+
+    
+    ## Determine lowest angular resolution from lowest frequency spw
+    try:
+        tb.open(visPola+'SPECTRAL_WINDOW/')
+        ref_frequencies = tb.getcol('REF_FREQUENCY')
+    finally:
+        tb.close()
+        
+    freq_diff = np.diff(ref_frequencies) #will be used later for sensitivity calcualtion per spw
+    print('freq_diff = ', freq_diff)
+    ref_frequencies_GHz = ref_frequencies/(1e9)
+    print(ref_frequencies_GHz)
+    spws_imaging = np.arange(spw_start, spw_end+1)
+    #print(spws_imaging)
+    speed_light = 3e8 #m/s
+    ref_wavelengths = speed_light/ref_frequencies
+    #print('ref_wavelengths = ', ref_wavelengths)
+
+    low_nu_synth_beam = (ref_wavelengths[0]/max_baseline)*(180.0/np.pi)*(60.0*60.0)
+    print('synthesized beam = ', low_nu_synth_beam, ' arcsec')
+
+
+    # Determine PB FWHM from lowest frquency spw
+    PB_fwhm = 42/ref_frequencies_GHz[0] #estimate of PB FWHM for VLA (arcmin)
+    PB_fwhm_arcsec = PB_fwhm*60
+    print('PB FWHM = ', PB_fwhm_arcsec, 'arcsec')
+
+    # Determine cell size (4 cells per synthesized beam)
+    cell_size = low_nu_synth_beam/4.0
+    print('cell size = ', cell_size, 'arcsec')
+
+    # Determine imsize from PB_fwhm/cell_size, can try 1.5* PB size?
+    im_size_temp = 1.5*PB_fwhm_arcsec/cell_size/2
+    print('im_size = ', im_size_temp/2)
+
+    # From imsizes reccomended for efficient computation, select one closest to the computed imsize 
+    NUMS=[]
+    for i in range(0,8):
+        for j in range(0,8):
+            NUMS.append(5*pow(2,i)*pow(3,j))
+
+    diff_arr = abs(NUMS-im_size_temp)
+    im_size = NUMS[np.where(diff_arr==min(diff_arr))[0][0]]
+
+
+    # Estimate the expected sensitivity from the VLA Observational Status summary page on sensitivity. Use half of time on source for upper limit on sensitivity
+    try:
+        tb.open(visPola)
+        subtable = tb.query('FIELD_ID=='+flux_field_select_string)
+        time_on_source = subtable.getcol('TIME')
+        subtable.close()
+    finally:
+        tb.close()
+        
+    time_diffs = np.diff(time_on_source)
+    # print(0.5*np.sum(time_diffs))
+    int_time = 0.5*np.sum(time_diffs)
+
+    bandwidth = freq_diff[0]
+    print('bandwidth = ', bandwidth , ' Hz')
+
+    ### FIXME: Could make the sensitivity estimate more accurate with a more accurate SEFD and
+    ###        determining the true number of antennas used. Assumes all antennas used for now and
+    ###        takes upper limits on SEFD from plots from VLA Observational Status summary page on sensitivity
+    if refFreqI < 12e9: #if Xband or below, use low-frequency SEFD upper limit
+        SEFD = 400
+    elif refFreqI>12e9: #if above Xband, use high-frequency SEFD upper limit
+        SEFD=1000
+    sensitivity = SEFD/(0.93*np.sqrt(2*27*26*int_time*bandwidth))
+    print('sensitivity = ', sensitivity, ' Jy/beam')
+
+    spws_imaging = np.arange(spw_start, spw_end)
+
+    for i in range(len(spws_imaging)):
+        im_name = polAngleField+'_StokesCubeIm_spw'+str(spws_imaging[i])
+        spw_list=3*[i]
+        chan_list = [0,32,64]
+        #list(32*np.ones_like(spw_list))
+        weight_list = list(1.0*np.ones_like(spw_list))
+        #print(spw_list)
+        #print(im_name)
+        if i == 0:
+            tclean(vis=visPola, selectdata=True, field=polAngleField, datacolumn='corrected', imagename=im_name, spw=str(i), imsize=im_size, cell=str(cell_size)+'arcsec', deconvolver='mtmfs', scales=[0], nterms=2, niter=imniter, weighting='briggs', robust=0.0, gridder='standard', pblimit=-1e-6, stokes='IQUV', threshold=str(sensitivity)+'Jy', interactive=False)
+            widebandpbcor(vis=visPola, imagename=im_name, nterms=2, threshold=str(rms_im)+'Jy', action='pbcor', spwlist=spw_list, chanlist=chan_list, weightlist=weight_list)
+            #extract restoring beam info from 4.5 GHz image
+            head_info = imhead(im_name+'.image.tt0')
+            bmj = head_info['perplanebeams']['beams']['*0']['*0']['major']['value']
+            bmn = head_info['perplanebeams']['beams']['*0']['*0']['minor']['value']
+            bposang = head_info['perplanebeams']['beams']['*0']['*0']['positionangle']['value']
+
+            print('restoring beam info: ', bmj, bmn, bposang)
+        else:
+            tclean(vis=visPola, selectdata=True, field=polAngleField, datacolumn='corrected', imagename=im_name, spw=str(i), imsize=im_size, cell=str(cell_size)+'arcsec', deconvolver='mtmfs', scales=[0], nterms=2, niter=imniter, weighting='briggs', robust=0.0, gridder='standard', pblimit=-1e-6, stokes='IQUV', threshold=str(sensitivity)+'Jy', interactive=False, restoringbeam=[str(bmj)+'arcsec', str(bmn)+'arcsec', str(bposang)+'deg'])
+            widebandpbcor(vis=visPola, imagename=im_name, nterms=2, threshold=str(rms_im)+'Jy', action='pbcor', spwlist=spw_list, chanlist=chan_list, weightlist=weight_list)
+
+    PF = []
+    PA = []
+    for i in range(len(spws_imaging)):
+        im_name = polAngleField+'_StokesCubeIm_spw'+str(spws_imaging[i])
+        #immath(outfile=im_name+'.pbcor.poli',mode='poli',imagename=[im_name+'.pbcor.image.tt0'],sigma='0.0Jy/beam')
+        # Obtain image for the polarization angle
+        #immath(outfile=im_name+'.pbcor.pola',mode='pola',imagename=[im_name+'.pbcor.image.tt0'],sigma='0.0Jy/beam')
+        imsubimage(imagename=im_name+'.pbcor.image.tt0',outfile=im_name+'.pbcor.I.image',stokes='I')
+        imsubimage(imagename=im_name+'.pbcor.image.tt0',outfile=im_name+'.pbcor.Q.image',stokes='Q')
+        imsubimage(imagename=im_name+'.pbcor.image.tt0',outfile=im_name+'.pbcor.U.image',stokes='U')
+        
+        ia.open(im_name+'.pbcor.I.image')
+        II = ia.getchunk()
+        ia.close()
+        
+        ia.open(im_name+'.pbcor.Q.image')
+        QQ = ia.getchunk()
+        ia.close()
+
+        ia.open(im_name+'.pbcor.U.image')
+        UU = ia.getchunk()
+        ia.close()
+        
+        y, x = int(II.shape[0]/2), int(II.shape[1]/2)
+        box_size = 10
+        sub_II = II[y-box_size:y+box_size,x-box_size:x+box_size,0,0].sum()/(II[y-box_size:y+box_size,x-box_size:x+box_size,0,0].shape[0]*II[y-box_size:y+box_size,x-box_size:x+box_size,0,0].shape[1])
+        sub_QQ = QQ[y-box_size:y+box_size,x-box_size:x+box_size,0,0].sum()/(QQ[y-box_size:y+box_size,x-box_size:x+box_size,0,0].shape[0]*QQ[y-box_size:y+box_size,x-box_size:x+box_size,0,0].shape[1])
+        sub_UU = UU[y-box_size:y+box_size,x-box_size:x+box_size,0,0].sum()/(UU[y-box_size:y+box_size,x-box_size:x+box_size,0,0].shape[0]*UU[y-box_size:y+box_size,x-box_size:x+box_size,0,0].shape[1])
+        
+        polfrac = np.sqrt(np.array(sub_UU)*np.array(sub_UU)+np.array(sub_QQ)*np.array(sub_QQ))/sub_II
+        #print('polfrac = ', polfrac)
+        PF.append(polfrac)
+
+        chi_ = 0.5*np.arctan2(np.array(sub_UU),np.array(sub_QQ))
+        #print('chi_ = ', chi_)
+        PA.append(chi_)
+        
+
+    cal_data2013 = np.genfromtxt('/lustre/aoc/students/ksanders/EVLA_SCRIPTED_PIPELINE/EVLA_SP_postfork/evla_scripted_pipeline_postfork/data/PolCals_2013_3C48.3C138.3C147.3C286.dat')
+
+    freqFitting = cal_data2013[:,0]
+    pol_perc = cal_data2013[:,1]
+    pol_angle = cal_data2013[:,2]
+
+    interp_func_pf = interp1d(freqFitting, pol_perc/100.0)
+
+    newarr_pf = interp_func_pf(ref_frequencies_GHz[:-1])
+
+    plt.figure()
+    plt.title('Overall Title')
+    plt.title('Polarization Fraction: Central 100 pixels:')
+    plt.xlabel(r'$\nu$ (GHz)')
+    plt.ylabel(r'PF')
+    plt.scatter(ref_frequencies_GHz[:-1],PF,color='r')
+    plt.scatter(ref_frequencies_GHz[:-1], newarr_pf, color='b')
+    plt.legend()
+    plt.savefig(polAngleField+'_PolFrac_central100pixels.png', bbox_inches="tight", dpi=250)
+    plt.show()
+
+    plt.figure()
+    plt.title('Overall Title')
+    #plt.subplot(221)
+    plt.title('PF Residuals: Central 100 pixels:')
+    plt.xlabel(r'$\nu$ (GHz)')
+    plt.ylabel(r'data-model')
+    plt.scatter(ref_frequencies_GHz[:-1],PF-newarr_pf,color='r')
+    plt.legend()
+    plt.savefig(polAngleField+'_PolFracResiduals_central100pixels.png', bbox_inches="tight", dpi=250)
+    plt.show()
+        
+
+    interp_func_pa = interp1d(freqFitting, pol_angle)
+
+    newarr_pa = interp_func_pa(ref_frequencies_GHz[:-1])
+
+    plt.figure()
+    plt.title('Overall Title')
+    #plt.subplot(221)
+    plt.title('Polarization Angle: Central 100 pixels:')
+    plt.xlabel(r'$\nu$ (GHz)')
+    plt.ylabel(r'PF')
+    plt.scatter(ref_frequencies_GHz[:-1],np.array(PA)*(180/np.pi),color='r')
+    plt.scatter(ref_frequencies_GHz[:-1], newarr_pa, color='b')
+    plt.legend()
+    plt.savefig(polAngleField+'_PolAngle_central100pixels.png', bbox_inches="tight", dpi=250)
+    plt.show()
+
+    plt.figure()
+    plt.title('Overall Title')
+    #plt.subplot(221)
+    plt.title('PA Residuals: Central 100 pixels:')
+    plt.xlabel(r'$\nu$ (GHz)')
+    plt.ylabel(r'data-model')
+    plt.scatter(ref_frequencies_GHz[:-1],PF-newarr_pa,color='r')
+    plt.legend()
+    plt.savefig(polAngleField+'_PolAngleResiduals_central100pixels.png', bbox_inches="tight", dpi=250)
+    plt.show()
+
+        
 
         
     task_logprint(f"QA2 score: {QA2_polcal}")
