@@ -234,8 +234,8 @@ if do_pol == True:
         flagging=True,
     )
     RefAntOutput = findrefant.calculate()
-    #refAnt = 'ea10' #casaguide chosen refant
-    refAnt = str(RefAntOutput[0])
+    refAnt = 'ea10' #casaguide chosen refant
+    #refAnt = str(RefAntOutput[0])
 
     task_logprint(f"The pipeline will use antenna {refAnt} as the reference")
 
@@ -436,6 +436,7 @@ if do_pol == True:
         print(coeffs_pf, coeffs_pa, p_ref)
         
         #coeffs = polOut[0]
+        #coeffs_pa = [1.4215,1.36672,-2.12678,3.48384,-2.71914]
         task_logprint("polindex input will be: "+str(coeffs_pf))
         task_logprint("polangle input will be: "+str(coeffs_pa))
 
@@ -703,27 +704,28 @@ if do_pol == True:
                timerange='',antenna='',avgtime='60',
                xaxis='frequency',yaxis='amp',ydatacolumn='corrected',
                coloraxis='corr',
-               plotfile='plotms_'+str(polAngleField)+'-corrected-amp.png')
+               plotfile='plotms_'+str(polAngleField)+'-corrected-amp-vs-frequency.png')
 
         plotms(vis=visPola,field=polAngleField,correlation='',
                timerange='',antenna='',avgtime='60',
                xaxis='frequency',yaxis='phase',ydatacolumn='corrected',
                plotrange=[-1,-1,-180,180],coloraxis='corr',
-               plotfile='plotms_'+str(polAngleField)+'-corrected-phase.png')
+               plotfile='plotms_'+str(polAngleField)+'-corrected-phase-vs-frequency.png')
 
         for i in range(len(polLeakFields)):
             plotms(vis=visPola,field=polLeakFields[i],correlation='',
                    timerange='',antenna='',avgtime='60',
                    xaxis='frequency',yaxis='amp',ydatacolumn='corrected',
-                   plotfile='plotms_'+str(polLeakFields[i])+'-corrected-amp.png')
+                   plotfile='plotms_'+str(polLeakFields[i])+'-corrected-amp-vs-frequency.png')
 
             plotms(vis=visPola,field=polLeakFields[i],correlation='RR,LL',
                    timerange='',antenna='',avgtime='60',
                    xaxis='frequency',yaxis='phase',ydatacolumn='corrected',
                    plotrange=[-1,-1,-180,180],coloraxis='corr',
-                   plotfile='plotms_'+str(polLeakFields[i])+'-corrected-phase.png')
+                   plotfile='plotms_'+str(polLeakFields[i])+'-corrected-phase-vs-frequency.png')
 
-            
+
+
         # Image calibrator in full stokes spectral cube at each spw, measure polangle and pol frac
         # across spws and compare with input model:
         # spws_imaging = np.arange(spw_start, spw_end)
@@ -863,19 +865,19 @@ if do_pol == True:
         #immath(outfile=im_name+'.pbcor.poli',mode='poli',imagename=[im_name+'.pbcor.image.tt0'],sigma='0.0Jy/beam')
         # Obtain image for the polarization angle
         #immath(outfile=im_name+'.pbcor.pola',mode='pola',imagename=[im_name+'.pbcor.image.tt0'],sigma='0.0Jy/beam')
-        imsubimage(imagename=im_name+'.pbcor.image.tt0',outfile=im_name+'.pbcor.I.image',stokes='I')
-        imsubimage(imagename=im_name+'.pbcor.image.tt0',outfile=im_name+'.pbcor.Q.image',stokes='Q')
-        imsubimage(imagename=im_name+'.pbcor.image.tt0',outfile=im_name+'.pbcor.U.image',stokes='U')
+        imsubimage(imagename=im_name+'.image.tt0',outfile=im_name+'.I.image',stokes='I')
+        imsubimage(imagename=im_name+'.image.tt0',outfile=im_name+'.Q.image',stokes='Q')
+        imsubimage(imagename=im_name+'.image.tt0',outfile=im_name+'.U.image',stokes='U')
         
-        ia.open(im_name+'.pbcor.I.image')
+        ia.open(im_name+'.I.image')
         II = ia.getchunk()
         ia.close()
         
-        ia.open(im_name+'.pbcor.Q.image')
+        ia.open(im_name+'.Q.image')
         QQ = ia.getchunk()
         ia.close()
 
-        ia.open(im_name+'.pbcor.U.image')
+        ia.open(im_name+'.U.image')
         UU = ia.getchunk()
         ia.close()
         
@@ -949,12 +951,10 @@ if do_pol == True:
     plt.title('PA Residuals: Central 100 pixels:')
     plt.xlabel(r'$\nu$ (GHz)')
     plt.ylabel(r'data-model')
-    plt.scatter(ref_frequencies_GHz[:-1],PF-newarr_pa,color='r')
+    plt.scatter(ref_frequencies_GHz[:-1],np.array(PA)*(180/np.pi)-newarr_pa,color='r')
     plt.legend()
     plt.savefig(polAngleField+'_PolAngleResiduals_central100pixels.png', bbox_inches="tight", dpi=250)
     plt.show()
-
-        
 
         
     task_logprint(f"QA2 score: {QA2_polcal}")

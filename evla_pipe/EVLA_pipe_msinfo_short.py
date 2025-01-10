@@ -492,7 +492,7 @@ if len(polarization_angle_state_IDs) == 0:
                     num_scans = len(scan_list)
                     task_logprint("This calibrator has %s scans" % num_scans)
 
-                    if (parang >=30.0 and num_scans >=3):#take first source that satisfies criteria
+                    if (parang >=45.0 and num_scans >=3):#take first source that satisfies criteria
                         task_logprint("This calibrator can be used as the leakage pol cal!")
                         if has_leak_polcal == False:
                             polLeakField = "%s" % field_names[c]
