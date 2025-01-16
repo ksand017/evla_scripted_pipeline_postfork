@@ -94,9 +94,9 @@ def run_pipeline(context=None):
     global do_hanning
     global do_pol
     #SDM_name = "TDRW0001.sb35624494.eb35628826.58395.23719237269"
-    SDM_name = "TDRW0001_calibrated"
+    SDM_name = "17B-093.58121_rawsplit"
     mymodel = "y"
-    do_hanning = "n"
+    do_hanning = "y"
     do_pol = True
     print(SDM_name, mymodel, do_hanning, do_pol)
     if context is None:
@@ -118,7 +118,7 @@ def run_pipeline(context=None):
         
         # write generic diagnostic plots.
         exec_script("EVLA_pipe_msinfo_short", context)
-        '''
+        
         # Deterministic flagging: (1) time-based for online flags, shadowed data,
         # zeroes, pointing scans, quacking, and (2) channel-based for end 5% of
         # channels of each SpW, 10 end channels at edges of basebands.
@@ -184,7 +184,7 @@ def run_pipeline(context=None):
 
         # Calculate data weights based on standard deviation within each SpW.
         exec_script("EVLA_pipe_statwt", context)
-        
+        '''
         # Make final uv plots.
         exec_script("EVLA_pipe_plotsummary", context)
         

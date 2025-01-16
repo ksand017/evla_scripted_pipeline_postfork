@@ -171,14 +171,19 @@ def polyFit(polAngleSource, band, refFreq):
     
 
     x_data = (freqFitting - refFreq) / refFreq
-    popt_pf, pcov_pf = sp.optimize.curve_fit(fitter3, x_data, pol/100.)
-    popt_pa, pcov_pa = sp.optimize.curve_fit(fitter3, x_data, ang*(np.pi/180))	
+    # popt_pf, pcov_pf = sp.optimize.curve_fit(fitter3, x_data, pol/100.)
+    # popt_pa, pcov_pa = sp.optimize.curve_fit(fitter3, x_data, ang*(np.pi/180))	
 
+    popt_pf = np.flip(np.polyfit(x_data, pol/100.0, 3))
+    print('popt_pf_test = ', popt_pf)
+
+    popt_pa = np.flip(np.polyfit(x_data, np.deg2rad(ang), 3))
+    print('popt_pa_test = ', popt_pa)
     # refFreq - refFreq = 0
     p_ref = np.polyval(popt_pf[::-1], 0.0)
 
     #print([popt, p_ref, RM, X_0])
-    return popt_pf, popt_pa, p_ref
+    return popt_pf, popt_pa, p_ref, pol, ang
 '''
 START OF POLCAL SCRIPT
 '''
@@ -431,26 +436,43 @@ if do_pol == True:
         # NOTE: this assumes that refFreqI is given in terms of Hz,
         # so that is why dividing by 1e+09, to put in terms of GHz
         #polOut =
-        coeffs_pf, coeffs_pa, p_ref = polyFit(polAngleField, band, refFreqI/1e+09)
+        coeffs_pf, coeffs_pa, p_ref, model_pol, model_ang = polyFit(polAngleField, band, refFreqI/1e+09)
         task_logprint("polyFit output:")
         print(coeffs_pf, coeffs_pa, p_ref)
+
+        # check if the input model has PA values < -90 or greater than +90.
+        # if PA < -90, the model written to setjy is flipped and the measured 
+        # values from the final check of the pipeline will need to have 180 
+        # subtracted to be compared to the input model values
+        # if PA > +90, the measured values from the final check of the pipeline
+        # will need to have 180 added to be compared to the input model values...
+        model_flip_plus = False
+        model_flip_minus = False
+        if np.rad2deg(coeffs_pa[0]) < -90:
+            model_flip_minus = True
+        elif np.rad2deg(coeffs_pa[0]) > 90:
+            model_flip_plus = True
+
         
-        #coeffs = polOut[0]
-        #coeffs_pa = [1.4215,1.36672,-2.12678,3.48384,-2.71914]
+
         task_logprint("polindex input will be: "+str(coeffs_pf))
         task_logprint("polangle input will be: "+str(coeffs_pa))
 
         #p_ref = polOut[1]
         task_logprint("p_ref is "+str(p_ref))
-
+        # print(stop)
         #RM = polOut[2]
         #X_0 = polOut[3] # this is in terms of radians
 
-        # calculate Stokes Q and U
-        #q_ref = p_ref*i_ref*np.cos(2*X_0)
-        #u_ref = p_ref*i_ref*np.sin(2*X_0)
+        RM = -68 # rad/m^2
+        # # X_0 = 122*pi/180 # in radians
+        # X_0 = (-100+180)*pi/180 # in radians
 
-        #task_logprint("Flux Dict passed to setjy is: "+str(i_ref)+" "+str(q_ref)+" "+str(u_ref))
+        # calculate Stokes Q and U
+        # q_ref = p_ref*i_ref*np.cos(2*X_0)
+        # u_ref = p_ref*i_ref*np.sin(2*X_0)
+
+        # task_logprint("Flux Dict passed to setjy is: "+str(i_ref)+" "+str(q_ref)+" "+str(u_ref))
 
         task_logprint("Determining setjy spix input\n")
         popt_I, pcov_I = sp.optimize.curve_fit(fitterI,freqI_band,fluxI_band)
@@ -465,9 +487,21 @@ if do_pol == True:
                             reffreq=str(refFreqI)+'Hz',
                             polindex = coeffs_pf,
                             polangle = coeffs_pa,
-                            usescratch=True)
+                            usescratch=True,
+                            rotmeas = 0.0)
+        # task_logprint('setjy_full_dict = ')
+        print('setjy_full_dict = ', setjy_full_dict)
+        # set the model
+        # setjy_full_dict = setjy(vis=visPola, standard='manual', field=polAngleField, 
+        #                         spw=str(spw_start)+'~'+str(spw_end),
+        #                         fluxdensity=[i_ref, q_ref, u_ref, 0],
+        #                         spix = popt_I,
+        #                         rotmeas = RM,
+        #                         reffreq=str(refFreqI)+'Hz',
+        #                         polindex = coeffs_pf,
+        #                         usescratch=True)
 
-        
+        #print(stop)
         plotms(vis=visPola,field=polAngleField,correlation='RL',
                timerange='',antenna='',
                xaxis='frequency',yaxis='amp',ydatacolumn='model', plotfile=str(polAngleField)+'_ampvsfreq_RL_polarizedmodel.png', overwrite=True)
@@ -475,7 +509,15 @@ if do_pol == True:
         plotms(vis=visPola,field=polAngleField,correlation='RL',
                timerange='',antenna='',
                xaxis='frequency',yaxis='phase',ydatacolumn='model', plotfile=str(polAngleField)+'_phasevsfreq_RL_polarizedmodel.png', overwrite=True)
-            
+
+        plotms(vis=visPola,field=polAngleField,correlation='RL',
+               timerange='',antenna='',
+               xaxis='frequency',yaxis='Real',ydatacolumn='model', plotfile=str(polAngleField)+'_RLRealvsfreq_Q_polarizedmodel.png', overwrite=True)
+        
+        plotms(vis=visPola,field=polAngleField,correlation='RL',
+               timerange='',antenna='',
+               xaxis='frequency',yaxis='Imag', ydatacolumn='model', plotfile=str(polAngleField)+'_RLImagvsfreq_U_polarizedmodel.png', overwrite=True)
+        # print(stop)
         # Solving for the Cross Hand Single Band Delays
         kcross_sbd = polAngleField+'_'+band+'_band_data.sbd.Kcross'
         gaincal(vis=visPola, caltable=kcross_sbd, field=polAngleField,
@@ -835,7 +877,7 @@ if do_pol == True:
     print('sensitivity = ', sensitivity, ' Jy/beam')
 
     spws_imaging = np.arange(spw_start, spw_end)
-
+    
     for i in range(len(spws_imaging)):
         im_name = polAngleField+'_StokesCubeIm_spw'+str(spws_imaging[i])
         spw_list=3*[i]
@@ -865,6 +907,7 @@ if do_pol == True:
         #immath(outfile=im_name+'.pbcor.poli',mode='poli',imagename=[im_name+'.pbcor.image.tt0'],sigma='0.0Jy/beam')
         # Obtain image for the polarization angle
         #immath(outfile=im_name+'.pbcor.pola',mode='pola',imagename=[im_name+'.pbcor.image.tt0'],sigma='0.0Jy/beam')
+
         imsubimage(imagename=im_name+'.image.tt0',outfile=im_name+'.I.image',stokes='I')
         imsubimage(imagename=im_name+'.image.tt0',outfile=im_name+'.Q.image',stokes='Q')
         imsubimage(imagename=im_name+'.image.tt0',outfile=im_name+'.U.image',stokes='U')
@@ -888,19 +931,56 @@ if do_pol == True:
         sub_UU = UU[y-box_size:y+box_size,x-box_size:x+box_size,0,0].sum()/(UU[y-box_size:y+box_size,x-box_size:x+box_size,0,0].shape[0]*UU[y-box_size:y+box_size,x-box_size:x+box_size,0,0].shape[1])
         
         polfrac = np.sqrt(np.array(sub_UU)*np.array(sub_UU)+np.array(sub_QQ)*np.array(sub_QQ))/sub_II
-        #print('polfrac = ', polfrac)
+        print('polfrac = ', polfrac)
         PF.append(polfrac)
 
         chi_ = 0.5*np.arctan2(np.array(sub_UU),np.array(sub_QQ))
-        #print('chi_ = ', chi_)
+        # chi_ = sub_PA
+        print('chi_ = ', chi_)
         PA.append(chi_)
+
+
+        # ia.open(im_name+'.pbcor.poli')
+        # PI = ia.getchunk()
+        # ia.close
+        # y, x = int(PI.shape[0]/2), int(PI.shape[1]/2)
+        # sub_PI = PI[y,x]
+
+        # ia.open(im_name+'.I.image')
+        # II = ia.getchunk()
+        # ia.close
+        # sub_II = II[y,x,0,0]
+
+        # polfrac = sub_PI/sub_II
+
+        # PF.append(polfrac)
+
+        # ia.open(im_name+'.pbcor.pola')
+        # PA = ia.getchunk()
+        # ia.close
+        # # y, x = int(PA.shape[0]/2), int(PI.shape[1]/2)
+        # sub_PA = PA[y,x]
+
+        # # chi_ = 0.5*np.arctan2(np.array(sub_UU),np.array(sub_QQ))
+        # chi_ = sub_PA
+        # #print('chi_ = ', chi_)
+        # PA.append(chi_)
         
 
-    cal_data2013 = np.genfromtxt('/lustre/aoc/students/ksanders/EVLA_SCRIPTED_PIPELINE/EVLA_SP_postfork/evla_scripted_pipeline_postfork/data/PolCals_2013_3C48.3C138.3C147.3C286.dat')
+    # cal_data2013 = np.genfromtxt('/lustre/aoc/students/ksanders/EVLA_SCRIPTED_PIPELINE/EVLA_SP_postfork/evla_scripted_pipeline_postfork/data/PolCals_2013_3C48.3C138.3C147.3C286.dat')
 
-    freqFitting = cal_data2013[:,0]
-    pol_perc = cal_data2013[:,1]
-    pol_angle = cal_data2013[:,2]
+    # freqFitting = cal_data2013[:,0]
+    pol_perc = model_pol/100
+    # cal_data2013[:,1]
+    pol_angle = model_ang
+    # cal_data2013[:,2]
+    
+    flip_factor = 0.0
+    if model_flip_plus == True:
+        flip_factor = 180.0
+    elif model_flip_minus == True:
+        flip_factor = -180.0
+
 
     interp_func_pf = interp1d(freqFitting, pol_perc/100.0)
 
@@ -911,8 +991,8 @@ if do_pol == True:
     plt.title('Polarization Fraction: Central 100 pixels:')
     plt.xlabel(r'$\nu$ (GHz)')
     plt.ylabel(r'PF')
-    plt.scatter(ref_frequencies_GHz[:-1],PF,color='r')
-    plt.scatter(ref_frequencies_GHz[:-1], newarr_pf, color='b')
+    plt.scatter(ref_frequencies_GHz[:-1],PF,color='r', label='measured')
+    plt.scatter(ref_frequencies_GHz[:-1], newarr_pf, color='b', label='model')
     plt.legend()
     plt.savefig(polAngleField+'_PolFrac_central100pixels.png', bbox_inches="tight", dpi=250)
     plt.show()
@@ -938,9 +1018,9 @@ if do_pol == True:
     #plt.subplot(221)
     plt.title('Polarization Angle: Central 100 pixels:')
     plt.xlabel(r'$\nu$ (GHz)')
-    plt.ylabel(r'PF')
-    plt.scatter(ref_frequencies_GHz[:-1],np.array(PA)*(180/np.pi),color='r')
-    plt.scatter(ref_frequencies_GHz[:-1], newarr_pa, color='b')
+    plt.ylabel(r'PA')
+    plt.scatter(ref_frequencies_GHz[:-1],np.rad2deg(np.array(PA))+flip_factor,color='r', label='measured')
+    plt.scatter(ref_frequencies_GHz[:-1], newarr_pa, color='b', label = 'model')
     plt.legend()
     plt.savefig(polAngleField+'_PolAngle_central100pixels.png', bbox_inches="tight", dpi=250)
     plt.show()
@@ -951,7 +1031,7 @@ if do_pol == True:
     plt.title('PA Residuals: Central 100 pixels:')
     plt.xlabel(r'$\nu$ (GHz)')
     plt.ylabel(r'data-model')
-    plt.scatter(ref_frequencies_GHz[:-1],np.array(PA)*(180/np.pi)-newarr_pa,color='r')
+    plt.scatter(ref_frequencies_GHz[:-1],(np.rad2deg(np.array(PA))+flip_factor)-newarr_pa,color='r')
     plt.legend()
     plt.savefig(polAngleField+'_PolAngleResiduals_central100pixels.png', bbox_inches="tight", dpi=250)
     plt.show()
