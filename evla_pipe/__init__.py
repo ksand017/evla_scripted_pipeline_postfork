@@ -94,7 +94,7 @@ def run_pipeline(context=None):
     global do_hanning
     global do_pol
     #SDM_name = "TDRW0001.sb35624494.eb35628826.58395.23719237269"
-    SDM_name = "17B-093.58121_rawsplit"
+    SDM_name = "17B-093.58121_rawsplit4"
     mymodel = "y"
     do_hanning = "y"
     do_pol = True
@@ -119,11 +119,14 @@ def run_pipeline(context=None):
         # write generic diagnostic plots.
         exec_script("EVLA_pipe_msinfo_short", context)
         
+
         # Deterministic flagging: (1) time-based for online flags, shadowed data,
         # zeroes, pointing scans, quacking, and (2) channel-based for end 5% of
         # channels of each SpW, 10 end channels at edges of basebands.
         exec_script("EVLA_pipe_flagall", context)
         
+        
+
         # Prepare for calibrations. Fill model columns for primary calibrators.
         exec_script("EVLA_pipe_calprep", context)
 
@@ -197,7 +200,3 @@ def run_pipeline(context=None):
     except KeyboardInterrupt as e:
         logprint(f"Keyboard Interrupt: {e}")
     return context
-
-
-
-

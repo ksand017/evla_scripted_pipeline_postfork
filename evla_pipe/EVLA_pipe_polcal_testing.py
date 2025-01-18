@@ -183,7 +183,7 @@ def polyFit(polAngleSource, band, refFreq):
     p_ref = np.polyval(popt_pf[::-1], 0.0)
 
     #print([popt, p_ref, RM, X_0])
-    return popt_pf, popt_pa, p_ref, pol, ang
+    return popt_pf, popt_pa, p_ref, pol, ang, freqFitting
 '''
 START OF POLCAL SCRIPT
 '''
@@ -436,7 +436,7 @@ if do_pol == True:
         # NOTE: this assumes that refFreqI is given in terms of Hz,
         # so that is why dividing by 1e+09, to put in terms of GHz
         #polOut =
-        coeffs_pf, coeffs_pa, p_ref, model_pol, model_ang = polyFit(polAngleField, band, refFreqI/1e+09)
+        coeffs_pf, coeffs_pa, p_ref, model_pol, model_ang, freqfitting = polyFit(polAngleField, band, refFreqI/1e+09)
         task_logprint("polyFit output:")
         print(coeffs_pf, coeffs_pa, p_ref)
 
@@ -876,7 +876,7 @@ if do_pol == True:
     sensitivity = SEFD/(0.93*np.sqrt(2*27*26*int_time*bandwidth))
     print('sensitivity = ', sensitivity, ' Jy/beam')
 
-    spws_imaging = np.arange(spw_start, spw_end)
+    spws_imaging = np.arange(spw_start, spw_end+1)
     
     for i in range(len(spws_imaging)):
         im_name = polAngleField+'_StokesCubeIm_spw'+str(spws_imaging[i])
@@ -967,7 +967,7 @@ if do_pol == True:
         # PA.append(chi_)
         
 
-    # cal_data2013 = np.genfromtxt('/lustre/aoc/students/ksanders/EVLA_SCRIPTED_PIPELINE/EVLA_SP_postfork/evla_scripted_pipeline_postfork/data/PolCals_2013_3C48.3C138.3C147.3C286.dat')
+    cal_data2013 = np.genfromtxt('/lustre/aoc/students/ksanders/EVLA_SCRIPTED_PIPELINE/EVLA_SP_postfork/evla_scripted_pipeline_postfork/data/PolCals_2013_3C48.3C138.3C147.3C286.dat')
 
     # freqFitting = cal_data2013[:,0]
     pol_perc = model_pol/100
@@ -982,7 +982,7 @@ if do_pol == True:
         flip_factor = -180.0
 
 
-    interp_func_pf = interp1d(freqFitting, pol_perc/100.0)
+    interp_func_pf = interp1d(freqfitting, pol_perc/100.0)
 
     newarr_pf = interp_func_pf(ref_frequencies_GHz[:-1])
 
@@ -1009,7 +1009,7 @@ if do_pol == True:
     plt.show()
         
 
-    interp_func_pa = interp1d(freqFitting, pol_angle)
+    interp_func_pa = interp1d(freqfitting, pol_angle)
 
     newarr_pa = interp_func_pa(ref_frequencies_GHz[:-1])
 
